@@ -1,24 +1,45 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "MarketOS",
+    "slug": "marketos",
+    "scheme": "marketos",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.achivsoftwares.marketos"
     },
     "android": {
+      "package": "com.achivsoftwares.marketos",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "MarketOS needs access to your photos so you can set a profile picture."
+        }
+      ],
+      "expo-font"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4b0c82de-f5f6-4ede-9e86-c7c90edbfd00"
+      }
     }
   }
 }
