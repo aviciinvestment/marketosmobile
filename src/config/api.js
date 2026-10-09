@@ -29,6 +29,7 @@ export const getApiEndpoints = async () => {
     adminComplaints: `${baseUrl}/api/admin/complaints`,
     adminTelemetry: `${baseUrl}/api/admin/telemetry`,
     supportComplaint: `${baseUrl}/api/support/complaint`,
+    uploadAvatar: `${baseUrl}/api/profile/upload-avatar`,
   };
 };
 

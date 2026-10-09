@@ -18,9 +18,17 @@ import { auth } from '../../firebase';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { formatRelative } from '../utils/format';
-import { ADMIN_EMAIL } from '../config/api';
+import { ADMIN_EMAIL, getApiEndpoints } from '../config/api';
 import SupportWidget from '../components/SupportWidget';
 import LegalModal from '../components/LegalModal';
+import { useAppT, useAppLang, setAppLang, LANGUAGE_CODES, LANGUAGE_META } from '../i18n';
+import {
+  isVoiceGuideEnabled,
+  setVoiceGuideEnabled,
+  subscribeVoiceGuide,
+  stopSpeech,
+  readPage,
+} from '../voiceGuide';
 
 const AVATAR_PRESETS = [
   {
@@ -68,6 +76,8 @@ export default function SettingsScreen({ navigation }) {
     clearAllData,
   } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const currentLang = useAppLang();
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
@@ -76,10 +86,44 @@ export default function SettingsScreen({ navigation }) {
   const [pasteUrlValue, setPasteUrlValue] = useState('');
   const [supportOpen, setSupportOpen] = useState(false);
   const [legalTab, setLegalTab] = useState(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(isVoiceGuideEnabled());
 
   useEffect(() => {
     if (user?.displayName) setDisplayName(user.displayName);
   }, [user?.displayName]);
+
+  useEffect(() => subscribeVoiceGuide((next) => setVoiceEnabled(next)), []);
+
+  const handleVoiceToggle = (next) => {
+    setVoiceGuideEnabled(next);
+    setVoiceEnabled(next);
+    if (next) {
+      setTimeout(() => readPage('settings', currentLang), 150);
+    } else {
+      stopSpeech();
+    }
+  };
+
+  // Upload the picked image to the backend (Cloudinary via the server) so we
+  // store a short CDN url instead of a huge data url. Falls back to the local
+  // data url when offline or the server is unavailable — same as the web app.
+  const uploadAvatarToBackend = async (dataUrl) => {
+    try {
+      const endpoints = await getApiEndpoints();
+      const res = await fetch(endpoints.uploadAvatar, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: dataUrl, userId: user?.uid || '' }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.url) return data.url;
+      }
+    } catch {
+      // fall through to local image
+    }
+    return null;
+  };
 
   const handleUploadPhoto = async () => {
     try {
@@ -106,7 +150,8 @@ export default function SettingsScreen({ navigation }) {
         return;
       }
       const dataUrl = asset.base64 ? 'data:image/jpeg;base64,' + asset.base64 : asset.uri;
-      setAvatarUrl(dataUrl);
+      const remoteUrl = await uploadAvatarToBackend(dataUrl);
+      setAvatarUrl(remoteUrl || dataUrl);
     } catch {
       Alert.alert('Upload Failed', 'Could not read that image. Please try another photo.');
     }
@@ -125,10 +170,14 @@ export default function SettingsScreen({ navigation }) {
     setProfileSuccessMessage('');
     try {
       if (auth.currentUser) {
-        await updateProfile(auth.currentUser, {
-          displayName: displayName.trim(),
-          photoURL: avatarUrl,
-        });
+        const profileUpdate = { displayName: displayName.trim() };
+        // Firebase rejects oversized data-urls; keep those local-only so the
+        // display-name save still succeeds, while real URLs sync to the account.
+        const isDataUrl = typeof avatarUrl === 'string' && avatarUrl.startsWith('data:');
+        if (!isDataUrl || avatarUrl.length <= 2000) {
+          profileUpdate.photoURL = avatarUrl;
+        }
+        await updateProfile(auth.currentUser, profileUpdate);
       }
       setAvatarUrl(avatarUrl);
       setProfileSuccessMessage('Profile and picture updated successfully!');
@@ -142,11 +191,11 @@ export default function SettingsScreen({ navigation }) {
 
   const handleClearAllData = () => {
     Alert.alert(
-      'Reset All Business Data?',
-      'This will permanently delete all your products, sales history, and expense records. This action cannot be undone.',
+      t('confirm.resetTitle'),
+      t('confirm.resetDesc'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, Clear Everything', style: 'destructive', onPress: () => clearAllData() },
+        { text: t('action.cancel'), style: 'cancel' },
+        { text: t('confirm.yesClear'), style: 'destructive', onPress: () => clearAllData() },
       ],
       { cancelable: true }
     );
@@ -157,10 +206,10 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const needsSync = dirty || syncError || !online;
-  const syncStatus = !online ? 'Offline Mode' : needsSync ? 'Unsaved Changes' : 'Cloud Sync Active';
+  const syncStatus = !online ? t('status.offline') : needsSync ? t('status.unsaved') : t('status.active');
   const syncDotColor = !online ? theme.red : needsSync ? theme.primary : theme.emerald;
   const syncBtnDisabled = isSyncing || (!dirty && !syncError && online && lastSyncAt != null);
-  const syncBtnLabel = isSyncing ? 'Saving...' : needsSync ? 'Save Online' : 'Saved';
+  const syncBtnLabel = isSyncing ? t('sync.saving') : needsSync ? t('sync.saveOnline') : t('sync.saved');
 
   const micro = { fontSize: 11, fontWeight: '800', color: theme.mutedForeground, letterSpacing: 1 };
 
@@ -197,18 +246,18 @@ export default function SettingsScreen({ navigation }) {
     >
       <View style={{ marginBottom: 18 }}>
         <Text style={{ color: theme.foreground, fontSize: 24, fontWeight: '900', letterSpacing: -0.6 }}>
-          Settings
+          {t('title.settings')}
         </Text>
         <Text style={{ color: theme.mutedForeground, fontSize: 12, marginTop: 3 }}>
-          Customize your profile photo, business details and preferences
+          {t('settings.subtitle')}
         </Text>
       </View>
 
       {/* Profile Details & Photo Editor */}
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>Store Owner Profile</Text>
+        <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>{t('settings.profileTitle')}</Text>
         <Text style={{ color: theme.mutedForeground, fontSize: 12, marginTop: 4, marginBottom: 16 }}>
-          Update your photo and display name across marketOS
+          {t('settings.profileDesc')}
         </Text>
 
         <View style={[styles.photoBlock, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -275,7 +324,7 @@ export default function SettingsScreen({ navigation }) {
                 },
               ]}
             >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }}>Save</Text>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#000' }}>{t('action.save')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -308,7 +357,7 @@ export default function SettingsScreen({ navigation }) {
           })}
         </ScrollView>
 
-        <Text style={[micro, { marginTop: 18, marginBottom: 8 }]}>EMAIL</Text>
+        <Text style={[micro, { marginTop: 18, marginBottom: 8 }]}>{t('auth.email')}</Text>
         <TextInput
           style={[
             styles.input,
@@ -367,27 +416,156 @@ export default function SettingsScreen({ navigation }) {
 
       {/* Appearance */}
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>Appearance</Text>
+        <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>{t('settings.appearance')}</Text>
         <Text style={{ color: theme.mutedForeground, fontSize: 12, marginTop: 4, marginBottom: 14 }}>
-          Choose your preferred application theme
+          {t('settings.themeDesc')}
         </Text>
-        <View style={[styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={[styles.rowIcon, { backgroundColor: theme.primary + '1F', borderColor: theme.primary + '40' }]}>
-            <Ionicons name={isDarkMode ? 'moon' : 'sunny'} size={16} color={theme.primary} />
-          </View>
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: theme.foreground }}>Dark Mode</Text>
-            <Text style={{ fontSize: 11, color: theme.mutedForeground, marginTop: 2 }}>
-              {isDarkMode ? 'Dark theme is active' : 'Light theme is active'}
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setIsDarkMode(false)}
+            style={[
+              styles.themeBtn,
+              {
+                borderColor: !isDarkMode ? theme.gold : theme.border,
+                backgroundColor: !isDarkMode ? theme.gold + '1A' : theme.surface,
+              },
+            ]}
+          >
+            <Ionicons name="sunny" size={16} color={!isDarkMode ? theme.gold : theme.mutedForeground} />
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '900',
+                color: !isDarkMode ? theme.gold : theme.mutedForeground,
+                marginLeft: 8,
+              }}
+            >
+              {t('settings.lightMode')}
             </Text>
-          </View>
-          <Switch
-            value={isDarkMode}
-            onValueChange={setIsDarkMode}
-            trackColor={{ false: theme.surfaceHover, true: theme.primary }}
-            thumbColor="#f4f3f4"
-            ios_backgroundColor={theme.surfaceHover}
-          />
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setIsDarkMode(true)}
+            style={[
+              styles.themeBtn,
+              {
+                borderColor: isDarkMode ? theme.gold : theme.border,
+                backgroundColor: isDarkMode ? theme.gold + '1A' : theme.surface,
+              },
+            ]}
+          >
+            <Ionicons name="moon" size={16} color={isDarkMode ? theme.gold : theme.mutedForeground} />
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '900',
+                color: isDarkMode ? theme.gold : theme.mutedForeground,
+                marginLeft: 8,
+              }}
+            >
+              {t('settings.darkMode')}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* App Language */}
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>{t('settings.languageTitle')}</Text>
+        <Text style={{ color: theme.mutedForeground, fontSize: 12, marginTop: 4, marginBottom: 14 }}>
+          {t('settings.languageDesc')}
+        </Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {LANGUAGE_CODES.map((langKey) => {
+            const active = currentLang === langKey;
+            const meta = LANGUAGE_META[langKey];
+            return (
+              <TouchableOpacity
+                key={langKey}
+                activeOpacity={0.85}
+                onPress={() => setAppLang(langKey)}
+                style={[
+                  styles.langChip,
+                  {
+                    backgroundColor: active ? theme.primary : theme.surface,
+                    borderColor: active ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 12 }}>{meta.flag}</Text>
+                <Text
+                  style={{
+                    fontSize: 12,
+                    fontWeight: active ? '900' : '700',
+                    color: active ? '#000' : theme.mutedForeground,
+                    marginLeft: 5,
+                  }}
+                >
+                  {meta.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </View>
+
+      {/* Voice Explanation */}
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="volume-high" size={18} color={theme.gold} />
+          <Text style={{ color: theme.foreground, fontSize: 16, fontWeight: '800' }}>{t('voice.title')}</Text>
+        </View>
+        <Text style={{ color: theme.mutedForeground, fontSize: 12, marginTop: 4, marginBottom: 14 }}>
+          {t('voice.desc')}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => handleVoiceToggle(true)}
+            style={[
+              styles.voiceBtn,
+              {
+                borderColor: voiceEnabled ? theme.primary : theme.border,
+                backgroundColor: voiceEnabled ? theme.primary + '1A' : theme.surface,
+              },
+            ]}
+          >
+            <Ionicons name="volume-high" size={15} color={voiceEnabled ? theme.gold : theme.mutedForeground} />
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '800',
+                marginLeft: 6,
+                color: voiceEnabled ? theme.gold : theme.mutedForeground,
+              }}
+            >
+              {t('voice.on')}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => handleVoiceToggle(false)}
+            style={[
+              styles.voiceBtn,
+              {
+                borderColor: !voiceEnabled ? theme.primary : theme.border,
+                backgroundColor: !voiceEnabled ? theme.primary + '1A' : theme.surface,
+              },
+            ]}
+          >
+            <Ionicons name="volume-mute" size={15} color={!voiceEnabled ? theme.gold : theme.mutedForeground} />
+            <Text
+              style={{
+                fontSize: 12,
+                fontWeight: '800',
+                marginLeft: 6,
+                color: !voiceEnabled ? theme.gold : theme.mutedForeground,
+              }}
+            >
+              {t('voice.off')}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -519,7 +697,7 @@ export default function SettingsScreen({ navigation }) {
 
       {/* Danger Zone */}
       <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={{ color: theme.red, fontSize: 16, fontWeight: '800', marginBottom: 14 }}>Danger Zone</Text>
+        <Text style={{ color: theme.red, fontSize: 16, fontWeight: '800', marginBottom: 14 }}>{t('settings.dangerZone')}</Text>
         <TouchableOpacity
           activeOpacity={0.85}
           onPress={handleClearAllData}
@@ -529,7 +707,7 @@ export default function SettingsScreen({ navigation }) {
           ]}
         >
           <Ionicons name="trash-outline" size={16} color={theme.red} />
-          <Text style={{ color: theme.red, fontWeight: '800', fontSize: 13, marginLeft: 8 }}>Clear All Data</Text>
+          <Text style={{ color: theme.red, fontWeight: '800', fontSize: 13, marginLeft: 8 }}>{t('settings.clearAllData')}</Text>
         </TouchableOpacity>
         <View style={{ height: 12 }} />
         <TouchableOpacity
@@ -538,7 +716,7 @@ export default function SettingsScreen({ navigation }) {
           style={[styles.primaryBtn, { backgroundColor: theme.red }]}
         >
           <Ionicons name="log-out-outline" size={17} color="#fff" />
-          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, marginLeft: 8 }}>Sign Out</Text>
+          <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14, marginLeft: 8 }}>{t('action.signout')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -623,6 +801,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 12,
   },
+  themeBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 14,
+  },
   rowIcon: {
     width: 34,
     height: 34,
@@ -654,5 +841,22 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     paddingVertical: 13,
+  },
+  langChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  voiceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingVertical: 12,
   },
 });

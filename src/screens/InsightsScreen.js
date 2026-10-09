@@ -3,25 +3,17 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
-import { formatNairaRound, formatNairaSigned, formatQty } from '../utils/format';
+import { formatNairaRound, formatNumberRound, formatQty } from '../utils/format';
 import {
   calculateFinancials,
   filterByPeriod,
   previousPeriodBounds,
   saleRevenue,
-  stockOf,
-  isPaidBack
+  stockOf
 } from '../utils/finance';
-import ProductAnalysis from '../components/ProductAnalysis';
+import { useAppT, useAppTF } from '../i18n';
 
-const PERIODS = [
-  { id: 'today', label: 'Today' },
-  { id: 'week', label: 'Week' },
-  { id: 'month', label: 'Month' },
-  { id: 'year', label: 'Year' },
-  { id: 'all', label: 'All' },
-  { id: 'custom', label: 'Custom' }
-];
+const PERIODS = ['today', 'week', 'month', 'year', 'custom', 'all'];
 
 const isValidDate = (value) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(new Date(`${value}T00:00:00`).getTime());
@@ -29,6 +21,8 @@ const isValidDate = (value) =>
 export default function InsightsScreen() {
   const { isDarkMode, products, sales, expenses } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const [period, setPeriod] = useState('today');
   const [startText, setStartText] = useState('');
@@ -47,106 +41,13 @@ export default function InsightsScreen() {
     [expenses, period, customStart, customEnd]
   );
 
-  const { totalSales, grossProfit, totalExpenses, netProfit } = useMemo(
+  const fin = useMemo(
     () => calculateFinancials(fSales, fExpenses, products),
     [fSales, fExpenses, products]
   );
-
-  const bestProduct = useMemo(() => {
-    const perf = {};
-    fSales.forEach((sale) => {
-      if (!sale.productId) return;
-      if (!perf[sale.productId]) perf[sale.productId] = { revenue: 0, qty: 0, name: sale.productName };
-      perf[sale.productId].revenue += saleRevenue(sale);
-      perf[sale.productId].qty += sale.quantitySold || 0;
-    });
-    return Object.values(perf).sort((a, b) => b.revenue - a.revenue)[0] || null;
-  }, [fSales]);
-
-  const lowStockProducts = useMemo(
-    () =>
-      (products || []).filter((p) => {
-        const { remainingPercentage } = stockOf(p, sales);
-        return remainingPercentage <= 25 && remainingPercentage > 0;
-      }),
-    [products, sales]
-  );
-
-  const finishedProducts = useMemo(
-    () => (products || []).filter((p) => (p.purchasePrice || 0) > 0 && isPaidBack(p, sales)),
-    [products, sales]
-  );
-
-  const chartData = useMemo(() => {
-    const today = new Date();
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-      days.push({
-        key: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
-        label: `${d.getDate()}/${d.getMonth() + 1}`,
-        total: 0
-      });
-    }
-    const index = {};
-    days.forEach((d, i) => {
-      index[d.key] = i;
-    });
-    (sales || []).forEach((sale) => {
-      const date = new Date(sale.timestamp || sale.date || sale.createdAt);
-      if (isNaN(date.getTime())) return;
-      const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-      if (index[key] !== undefined) days[index[key]].total += saleRevenue(sale);
-    });
-    const max = Math.max(...days.map((d) => d.total), 1);
-    return days.map((d) => ({ ...d, pct: (d.total / max) * 100 }));
-  }, [sales]);
-  const hasChartData = chartData.some((d) => d.total > 0);
-
-  let greetingMsg = 'Here is how your business is doing.';
-  if (netProfit > 0) {
-    greetingMsg = "You're doing great! Your business is making money.";
-  } else if (netProfit < 0) {
-    greetingMsg = "You're running at a loss currently. Keep an eye on expenses.";
-  } else if (totalSales === 0) {
-    greetingMsg = 'Welcome! Ready to record your sales and expenses.';
-  }
-
-  let financialStory = `In this period, you have brought in ${formatNairaRound(totalSales)} from sales. `;
-  if (grossProfit > 0) {
-    financialStory += `After covering the cost of goods sold, you made ${formatNairaRound(grossProfit)} from your products. `;
-  }
-  if (totalExpenses > 0) {
-    financialStory += `You spent ${formatNairaRound(totalExpenses)} on business costs (like transportation or shop upkeep). `;
-  }
-  if (netProfit > 0) {
-    financialStory += `That leaves you with ${formatNairaRound(netProfit)} in clean profit to take home!`;
-  } else if (netProfit < 0) {
-    financialStory += `Currently, your spending exceeds your earnings by ${formatNairaRound(Math.abs(netProfit))}.`;
-  }
-
-  const productMsg =
-    bestProduct && bestProduct.revenue > 0
-      ? `${bestProduct.name} is your top seller right now (${formatNairaRound(bestProduct.revenue)}).`
-      : '';
-
-  let stockMsg = '';
-  if (finishedProducts.length > 0) {
-    stockMsg = `${finishedProducts.length} product(s) are completely finished.`;
-  } else if (lowStockProducts.length > 0) {
-    stockMsg = `${lowStockProducts.length} product(s) are running low.`;
-  } else if (products.length > 0) {
-    stockMsg = 'Your stock levels are looking healthy.';
-  }
-
-  const periodLabel =
-    period === 'all'
-      ? 'All time'
-      : period === 'today'
-      ? 'Today'
-      : period === 'custom'
-      ? 'Selected custom period'
-      : `This ${period}`;
+  const moneyMade = fin.totalSales;
+  const profit = fin.netProfit;
+  const moneySpent = fin.totalExpenses;
 
   const prevBounds = useMemo(
     () => previousPeriodBounds(period, customStart, customEnd),
@@ -157,206 +58,127 @@ export default function InsightsScreen() {
     const start = prevBounds.start.getTime();
     const end = prevBounds.end.getTime();
     return (sales || []).filter((sale) => {
-      const t = new Date(sale.timestamp || sale.date || sale.createdAt).getTime();
-      return !isNaN(t) && t >= start && t <= end;
+      const ts = new Date(sale.timestamp || sale.date || sale.createdAt).getTime();
+      return !isNaN(ts) && ts >= start && ts <= end;
     });
   }, [sales, prevBounds]);
   const prevFin = useMemo(() => calculateFinancials(prevSales, [], products), [prevSales, products]);
 
-  const insights = [];
-  const pushInsight = (icon, tone, text) => insights.push({ icon, tone, text });
+  const stockTotals = useMemo(() => {
+    let value = 0;
+    let count = 0;
+    (products || []).forEach((p) => {
+      const s = stockOf(p, sales);
+      value += s.remainingValue || 0;
+      count += s.qtyRemaining || 0;
+    });
+    return { value, count };
+  }, [products, sales]);
 
+  const periodLabel =
+    period === 'all'
+      ? 'All time'
+      : period === 'today'
+      ? 'Today'
+      : period === 'custom'
+      ? 'Selected custom period'
+      : `This ${period}`;
+
+  let greeting = t('dash.doingWell');
+  if (moneyMade === 0) greeting = t('dash.welcome');
+  else if (profit > 0) greeting = t('dash.great');
+  else if (profit < 0) greeting = t('dash.loss');
+
+  let headline = '';
   if (fSales.length === 0 && prevSales.length === 0) {
-    pushInsight(
-      'bar-chart-outline',
-      'gold',
-      `You haven't recorded any sales yet for ${periodLabel.toLowerCase()}. Start recording sales to see insights.`
-    );
+    headline = tf('narrative.noneYet', periodLabel.toLowerCase());
   } else if (prevSales.length === 0 || period === 'all') {
-    pushInsight(
-      'stats-chart',
-      'gold',
-      `For ${periodLabel.toLowerCase()}, you recorded ${formatNairaRound(grossProfit)} in gross profit from ${formatNairaRound(totalSales)} in total sales.`
-    );
+    headline = tf('narrative.summary', periodLabel.toLowerCase(), formatNumberRound(profit), formatNumberRound(moneyMade));
   } else {
-    const revDiff = totalSales - prevFin.totalSales;
-    const profitDiff = grossProfit - prevFin.grossProfit;
+    const revDiff = moneyMade - prevFin.totalSales;
+    const profitDiff = profit - prevFin.netProfit;
     if (revDiff > 0 && profitDiff > 0) {
-      pushInsight(
-        'trending-up',
-        'emerald',
-        `Your business is growing. Your sales increased by ${formatNairaRound(revDiff)}, and your gross profit also went up by ${formatNairaRound(profitDiff)} compared to the previous period.`
-      );
+      headline = tf('narrative.growing', formatNumberRound(revDiff), formatNumberRound(profitDiff));
     } else if (revDiff > 0 && profitDiff <= 0) {
-      pushInsight(
-        'trending-up',
-        'amber',
-        'Your sales increased, but your gross profit did not. You sold more, but the items you sold had lower profit margins than before.'
-      );
+      headline = t('narrative.salesUp');
     } else if (revDiff < 0 && profitDiff < 0) {
-      pushInsight(
-        'trending-down',
-        'rose',
-        `Your sales and gross profit are lower than the previous period. You made ${formatNairaRound(Math.abs(revDiff))} less in revenue.`
-      );
+      headline = tf('narrative.down', formatNumberRound(Math.abs(revDiff)));
     } else if (revDiff < 0 && profitDiff >= 0) {
-      pushInsight(
-        'trending-up',
-        'emerald',
-        'You made fewer sales, but your gross profit actually went up! This means you sold items with much better profit margins.'
-      );
+      headline = t('narrative.fewerBetter');
     } else {
-      pushInsight(
-        'swap-horizontal',
-        'muted',
-        'Your business performance remained roughly the same as the previous period.'
-      );
+      headline = t('narrative.flat');
     }
   }
+
+  const byRevenue = useMemo(
+    () =>
+      (products || [])
+        .map((p) => {
+          const pSales = fSales.filter((s) => s.productId === p.id);
+          const rev = pSales.reduce((acc, s) => acc + saleRevenue(s), 0);
+          const qty = pSales.reduce((acc, s) => acc + (s.quantitySold || 0), 0);
+          return { id: p.id, name: p.name, rev, qty };
+        })
+        .sort((a, b) => b.rev - a.rev)
+        .filter((p) => p.rev > 0)
+        .slice(0, 3),
+    [products, fSales]
+  );
+  const maxRev = byRevenue[0]?.rev || 0;
 
   const productStats = (products || []).map((p) => {
     const pSales = fSales.filter((s) => s.productId === p.id);
     const rev = pSales.reduce((acc, s) => acc + saleRevenue(s), 0);
     const cost = p.purchasePrice || 0;
-    const profit = pSales.length > 0 ? rev - cost : 0;
     const qty = pSales.reduce((acc, s) => acc + (s.quantitySold || 0), 0);
     const breakEvenPct = cost > 0 ? Math.min(100, (rev / cost) * 100) : 0;
     const { remainingPercentage } = stockOf(p, sales);
-    return { ...p, rev, profit, qty, cost, breakEvenPct, remainingPercentage };
+    return { ...p, rev, profit: rev - cost, qty, cost, breakEvenPct, remainingPercentage };
   });
 
-  const byProfit = [...productStats].sort((a, b) => b.profit - a.profit);
-  const byQty = [...productStats].sort((a, b) => b.qty - a.qty);
-  const mostProfitProduct = byProfit[0] && byProfit[0].profit > 0 ? byProfit[0] : null;
-  const highestQtyProduct = byQty[0] && byQty[0].qty > 0 ? byQty[0] : null;
+  const slowPayback = productStats.filter((p) => p.qty > 0 && p.profit < 0);
   const notSelling = productStats.filter((p) => p.qty === 0);
   const runningLow = productStats.filter((p) => p.remainingPercentage <= 25 && p.remainingPercentage > 0);
-  const highSalesLowProfit = productStats.filter((p) => p.qty > 0 && p.profit < 0);
+  const nothingToWatch = slowPayback.length === 0 && notSelling.length === 0 && runningLow.length === 0;
 
-  if (mostProfitProduct) {
-    pushInsight(
-      'ribbon-outline',
-      'emerald',
-      `${mostProfitProduct.name} generated the most gross profit (${formatNairaRound(mostProfitProduct.profit)}).`
-    );
-  }
-  if (highestQtyProduct && (!mostProfitProduct || highestQtyProduct.id !== mostProfitProduct.id)) {
-    pushInsight(
-      'basket-outline',
-      'gold',
-      `${highestQtyProduct.name} was your most popular item by volume, selling ${formatQty(highestQtyProduct.qty)} units.`
-    );
-  }
-  if (highSalesLowProfit.length > 0) {
-    const h = highSalesLowProfit[0];
-    pushInsight(
-      'alert-circle',
-      'amber',
-      `You are selling a lot of ${h.name}, but you haven't earned back what it cost you yet — ${formatNairaRound(h.rev)} made of the ${formatNairaRound(h.cost)} spent (${h.breakEvenPct.toFixed(0)}% recovered). Keep selling to break even.`
-    );
-  }
-  if (notSelling.length > 0 && fSales.length > 0) {
-    pushInsight(
-      'moon-outline',
-      'muted',
-      `${notSelling.length} product(s) did not sell at all during this period, including ${notSelling[0].name}.`
-    );
-  }
-  if (runningLow.length > 0) {
-    pushInsight(
-      'warning-outline',
-      'rose',
-      `${runningLow[0].name}${
-        runningLow.length > 1 ? ` and ${runningLow.length - 1} other product(s)` : ''
-      } are running low on stock. Restock soon so you don't miss out on sales!`
-    );
-  }
-  if (totalSales > 0 && totalExpenses >= totalSales) {
-    pushInsight(
-      'alert',
-      'rose',
-      `Your expenses (${formatNairaRound(totalExpenses)}) have matched or passed everything you made (${formatNairaRound(totalSales)}). Trim costs before you run dry.`
-    );
-  } else if (totalExpenses > 0 && totalExpenses >= grossProfit) {
-    pushInsight(
-      'alert',
-      'amber',
-      `You spent ${formatNairaRound(totalExpenses)} while your products only made ${formatNairaRound(grossProfit)}. Watch your spending.`
-    );
-  }
-
-  const toneColors = {
-    gold: theme.gold,
-    emerald: theme.emerald,
-    amber: theme.amber,
-    rose: theme.rose,
-    sky: theme.sky,
-    muted: theme.mutedForeground
-  };
-
-  const kpis = [
+  const numberTiles = [
     {
-      label: 'Money In',
-      icon: 'cash-outline',
-      color: theme.emerald,
-      value: formatNairaRound(totalSales),
-      valueColor: theme.emerald,
-      caption: 'All customer cash collected'
-    },
-    {
-      label: 'Gross Profit',
-      icon: 'trending-up',
-      color: grossProfit >= 0 ? theme.emerald : theme.rose,
-      value: formatNairaRound(grossProfit),
-      valueColor: grossProfit >= 0 ? theme.emerald : theme.rose,
-      caption: 'Revenue minus cost of items sold'
-    },
-    {
-      label: 'Expenses',
+      key: 'moneyGot',
+      label: t('report.moneyGot'),
+      hint: t('report.moneyGotHint'),
       icon: 'wallet-outline',
-      color: theme.amber,
-      value: formatNairaRound(totalExpenses),
-      valueColor: theme.amber,
-      caption: 'Power, transit, rent & operations'
+      tone: theme.emerald,
+      value: formatNairaRound(moneyMade),
+      valueColor: theme.foreground
     },
     {
-      label: 'Net Profit',
-      icon: 'wallet',
-      color: netProfit >= 0 ? theme.emerald : theme.rose,
-      value: formatNairaSigned(netProfit, 0),
-      valueColor: netProfit >= 0 ? theme.emerald : theme.rose,
-      caption: 'Gross profit minus expenses'
+      key: 'profit',
+      label: t('report.yourProfit'),
+      hint: t('report.yourProfitHint'),
+      icon: 'trending-up',
+      tone: profit < 0 ? theme.rose : theme.emerald,
+      value: `${profit < 0 ? '-' : ''}${formatNairaRound(Math.abs(profit))}`,
+      valueColor: profit < 0 ? theme.rose : theme.emerald
+    },
+    {
+      key: 'moneySpent',
+      label: t('report.moneySpent'),
+      hint: t('report.moneySpentHint'),
+      icon: 'bag-handle-outline',
+      tone: theme.amber,
+      value: formatNairaRound(moneySpent),
+      valueColor: theme.foreground
+    },
+    {
+      key: 'stockWorth',
+      label: t('report.stockWorth'),
+      hint: stockTotals.count > 0 ? `≈ ${formatNairaRound(stockTotals.value)}` : t('report.stockWorthHint'),
+      icon: 'cube-outline',
+      tone: theme.sky,
+      value: stockTotals.count > 0 ? formatQty(stockTotals.count) : '—',
+      valueColor: theme.foreground
     }
   ];
-
-  const renderKpi = (kpi) => (
-    <View
-      key={kpi.label}
-      style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}
-    >
-      <View style={styles.kpiTop}>
-        <View
-          style={[
-            styles.kpiIcon,
-            { backgroundColor: `${kpi.color}1F`, borderColor: `${kpi.color}40` }
-          ]}
-        >
-          <Ionicons name={kpi.icon} size={16} color={kpi.color} />
-        </View>
-        <Text style={[styles.microLabel, { color: theme.mutedForeground }]}>{kpi.label}</Text>
-      </View>
-      <Text
-        style={[styles.kpiValue, { color: kpi.valueColor }]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.6}
-      >
-        {kpi.value}
-      </Text>
-      <View style={[styles.kpiDivider, { backgroundColor: theme.border }]} />
-      <Text style={[styles.kpiCaption, { color: theme.mutedForeground }]}>{kpi.caption}</Text>
-    </View>
-  );
 
   return (
     <ScrollView
@@ -364,39 +186,42 @@ export default function InsightsScreen() {
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={[styles.screenTitle, { color: theme.foreground }]}>Insights & Analytics</Text>
-
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chipRow}
-      >
+      {/* Time period selector */}
+      <View style={styles.periodRow}>
         {PERIODS.map((p) => {
-          const selected = period === p.id;
+          const selected = period === p;
+          const label =
+            p === 'all'
+              ? t('period.all')
+              : p === 'today'
+              ? t('period.today')
+              : p === 'custom'
+              ? t('period.custom')
+              : `This ${p.charAt(0).toUpperCase() + p.slice(1)}`;
           return (
             <TouchableOpacity
-              key={p.id}
+              key={p}
               activeOpacity={0.85}
-              onPress={() => setPeriod(p.id)}
+              onPress={() => setPeriod(p)}
               style={[
-                styles.chip,
+                styles.periodChip,
                 {
                   backgroundColor: selected ? theme.primary : theme.card,
                   borderColor: selected ? theme.primary : theme.border
                 }
               ]}
             >
-              <Text style={[styles.chipText, { color: selected ? '#000' : theme.mutedForeground }]}>
-                {p.label}
+              <Text style={[styles.periodChipText, { color: selected ? '#000' : theme.mutedForeground }]}>
+                {label}
               </Text>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
       {period === 'custom' && (
         <View style={[styles.customRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.customLabel, { color: theme.mutedForeground }]}>From</Text>
+          <Text style={[styles.customLabel, { color: theme.mutedForeground }]}>{t('dashboard.from')}</Text>
           <TextInput
             value={startText}
             onChangeText={setStartText}
@@ -408,7 +233,7 @@ export default function InsightsScreen() {
               { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
             ]}
           />
-          <Text style={[styles.customLabel, { color: theme.mutedForeground }]}>To</Text>
+          <Text style={[styles.customLabel, { color: theme.mutedForeground }]}>{t('dashboard.to')}</Text>
           <TextInput
             value={endText}
             onChangeText={setEndText}
@@ -423,167 +248,190 @@ export default function InsightsScreen() {
         </View>
       )}
 
-      <View style={styles.kpiRow}>
-        {renderKpi(kpis[0])}
-        {renderKpi(kpis[1])}
-      </View>
-      <View style={styles.kpiRow}>
-        {renderKpi(kpis[2])}
-        {renderKpi(kpis[3])}
-      </View>
-
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      {/* Main report card */}
+      <View style={[styles.reportCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
         <View
           style={[
-            styles.storyBadge,
-            { backgroundColor: `${theme.primary}1A`, borderColor: `${theme.primary}40` }
+            styles.statusChip,
+            { backgroundColor: `${theme.primary}26`, borderColor: `${theme.primary}4D` }
           ]}
         >
-          <View style={[styles.storyDot, { backgroundColor: theme.primary }]} />
-          <Text style={[styles.storyBadgeText, { color: theme.gold }]}>Business Summary</Text>
+          <Ionicons name="bar-chart" size={13} color={theme.gold} />
+          <Text style={[styles.statusChipText, { color: theme.gold }]}>{t('report.statusChip')}</Text>
         </View>
-        <Text style={[styles.storyGreeting, { color: theme.foreground }]}>{greetingMsg}</Text>
-        <Text style={[styles.storyText, { color: theme.mutedForeground }]}>{financialStory}</Text>
-      </View>
 
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <View style={styles.kpiTop}>
-          <View
-            style={[styles.kpiIcon, { backgroundColor: `${theme.emerald}1F`, borderColor: `${theme.emerald}40` }]}
-          >
-            <Ionicons name="trophy-outline" size={16} color={theme.emerald} />
+        <Text style={[styles.reportTitle, { color: theme.foreground }]}>{t('report.title')}</Text>
+        <Text style={[styles.reportGreeting, { color: theme.foreground }]}>{greeting}</Text>
+
+        {!!headline && (
+          <View style={[styles.headlineBox, { backgroundColor: theme.surface + '80', borderColor: theme.border }]}>
+            <Text style={[styles.headlineText, { color: theme.foreground }]}>{headline}</Text>
           </View>
-          <Text style={[styles.microLabel, { color: theme.mutedForeground }]}>BEST SELLER</Text>
-        </View>
-        {bestProduct && bestProduct.revenue > 0 ? (
-          <React.Fragment>
-            <Text style={[styles.bestName, { color: theme.foreground }]}>{productMsg}</Text>
-            <Text style={[styles.cardCaption, { color: theme.mutedForeground }]}>
-              Sold {formatQty(bestProduct.qty)} units {periodLabel.toLowerCase()}.
-            </Text>
-          </React.Fragment>
-        ) : (
-          <Text style={[styles.cardCaption, { color: theme.mutedForeground }]}>
-            No sales recorded for {periodLabel.toLowerCase()} yet.
-          </Text>
         )}
-      </View>
 
-      {products.length > 0 && (
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.kpiTop}>
+        <View style={styles.tileGrid}>
+          {numberTiles.map((tile) => (
             <View
-              style={[styles.kpiIcon, { backgroundColor: `${theme.amber}1F`, borderColor: `${theme.amber}40` }]}
+              key={tile.key}
+              style={[
+                styles.tile,
+                { backgroundColor: `${tile.tone}1A`, borderColor: `${tile.tone}33` }
+              ]}
             >
-              <Ionicons name="alert-circle-outline" size={16} color={theme.amber} />
-            </View>
-            <Text style={[styles.microLabel, { color: theme.mutedForeground }]}>STOCK WATCH</Text>
-          </View>
-          <Text style={[styles.stockSummary, { color: theme.foreground }]}>{stockMsg}</Text>
-
-          {finishedProducts.map((p) => (
-            <View key={`done-${p.id}`} style={styles.stockLine}>
-              <Ionicons name="checkmark-circle" size={15} color={theme.emerald} />
-              <Text style={[styles.stockLineText, { color: theme.foreground }]}>
-                {p.name} is fully paid back.
+              <View style={styles.tileTop}>
+                <View
+                  style={[
+                    styles.tileIcon,
+                    { backgroundColor: `${tile.tone}26`, borderColor: `${tile.tone}33` }
+                  ]}
+                >
+                  <Ionicons name={tile.icon} size={16} color={tile.tone} />
+                </View>
+                <Text style={[styles.tileLabel, { color: tile.tone }]} numberOfLines={2}>
+                  {tile.label}
+                </Text>
+              </View>
+              <Text
+                style={[styles.tileValue, { color: tile.valueColor }]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {tile.value}
+              </Text>
+              <Text style={[styles.tileHint, { color: theme.mutedForeground }]} numberOfLines={2}>
+                {tile.hint}
               </Text>
             </View>
           ))}
-          {lowStockProducts.map((p) => {
-            const { remainingPercentage } = stockOf(p, sales);
-            return (
-              <View key={`low-${p.id}`} style={styles.stockLine}>
-                <Ionicons name="warning-outline" size={15} color={theme.amber} />
-                <Text style={[styles.stockLineText, { color: theme.foreground }]}>
-                  {p.name} — {remainingPercentage.toFixed(0)}% stock left.
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-
-      {hasChartData && (
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.sectionTitle, { color: theme.foreground }]}>
-            Revenue Trend (Last 7 Days)
-          </Text>
-          <View style={styles.chartContainer}>
-            {chartData.map((day) => (
-              <View key={day.key} style={styles.barCol}>
-                <View style={[styles.barBg, { backgroundColor: theme.surface }]}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      { height: `${day.pct}%`, backgroundColor: theme.primary }
-                    ]}
-                  />
-                </View>
-                <Text style={[styles.barLabel, { color: theme.mutedForeground }]}>{day.label}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <View
-          style={[
-            styles.storyBadge,
-            { backgroundColor: `${theme.primary}1A`, borderColor: `${theme.primary}40` }
-          ]}
-        >
-          <Ionicons name="stats-chart" size={13} color={theme.gold} />
-          <Text style={[styles.storyBadgeText, { color: theme.gold }]}>Performance Intel</Text>
-        </View>
-        <Text style={[styles.sectionTitle, { color: theme.foreground }]}>Executive Insights</Text>
-        <Text style={[styles.periodLabel, { color: theme.mutedForeground }]}>{periodLabel}</Text>
-
-        <View style={{ gap: 10, marginTop: 6 }}>
-          {insights.map((item, idx) => {
-            const color = toneColors[item.tone] || theme.gold;
-            return (
-              <View
-                key={idx}
-                style={[
-                  styles.insightRow,
-                  { backgroundColor: theme.surface, borderColor: theme.border }
-                ]}
-              >
-                <View
-                  style={[
-                    styles.insightIcon,
-                    { backgroundColor: `${color}1F`, borderColor: `${color}40` }
-                  ]}
-                >
-                  <Ionicons name={item.icon} size={14} color={color} />
-                </View>
-                <Text style={[styles.insightText, { color: theme.foreground }]}>{item.text}</Text>
-              </View>
-            );
-          })}
         </View>
       </View>
 
-      <ProductAnalysis period={period} customStart={customStart} customEnd={customEnd} />
+      {/* What sells best */}
+      {byRevenue.length > 0 ? (
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={styles.cardTitleRow}>
+            <Ionicons name="trending-up" size={20} color={theme.emerald} />
+            <Text style={[styles.cardTitle, { color: theme.foreground }]}>{t('report.bestSellers')}</Text>
+          </View>
+          <Text style={[styles.cardSub, { color: theme.mutedForeground }]}>{t('report.bestSellersHint')}</Text>
+          <View style={{ gap: 12, marginTop: 4 }}>
+            {byRevenue.map((p, i) => {
+              const width = maxRev > 0 ? Math.max(12, (p.rev / maxRev) * 100) : 12;
+              return (
+                <View
+                  key={p.id}
+                  style={[styles.bestRow, { backgroundColor: theme.surface + '4D', borderColor: theme.border }]}
+                >
+                  <View style={styles.bestMeta}>
+                    <View style={[styles.bestRank, { backgroundColor: theme.primary }]}>
+                      <Text style={styles.bestRankText}>{i + 1}</Text>
+                    </View>
+                    <Text style={[styles.bestName, { color: theme.foreground }]} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                    <Text style={[styles.bestRev, { color: theme.gold }]}>{formatNairaRound(p.rev)}</Text>
+                  </View>
+                  <View style={[styles.barBg, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                    <View style={[styles.barFill, { width: `${width}%`, backgroundColor: theme.primary }]} />
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.card, styles.centerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View
+            style={[
+              styles.emptyIcon,
+              { backgroundColor: `${theme.emerald}1A`, borderColor: `${theme.emerald}33` }
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={24} color={theme.emerald} />
+          </View>
+          <Text style={[styles.cardTitle, { color: theme.foreground }]}>{t('report.noSalesTitle')}</Text>
+          <Text style={[styles.cardSub, { color: theme.mutedForeground }]}>{t('report.noSalesDesc')}</Text>
+        </View>
+      )}
+
+      {/* Things you should watch */}
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <View style={styles.cardTitleRow}>
+          <Ionicons name="warning-outline" size={20} color={theme.gold} />
+          <Text style={[styles.cardTitle, { color: theme.foreground }]}>{t('report.attention')}</Text>
+        </View>
+
+        {nothingToWatch ? (
+          <View
+            style={[
+              styles.attentionRow,
+              { backgroundColor: `${theme.emerald}1A`, borderColor: `${theme.emerald}33` }
+            ]}
+          >
+            <Ionicons name="checkmark-circle" size={16} color={theme.emerald} style={{ marginTop: 1 }} />
+            <Text style={[styles.attentionText, { color: theme.foreground }]}>{t('report.allGood')}</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 12, marginTop: 4 }}>
+            {runningLow.length > 0 && (
+              <View style={[styles.attentionRow, { backgroundColor: `${theme.rose}1A`, borderColor: `${theme.rose}33` }]}>
+                <View style={[styles.attentionDot, { backgroundColor: theme.rose }]} />
+                <Text style={[styles.attentionText, { color: theme.foreground }]}>
+                  {tf(
+                    'narrative.runningLow',
+                    runningLow.length > 1
+                      ? tf('narrative.runningLowOther', runningLow[0].name, runningLow.length - 1)
+                      : runningLow[0].name
+                  )}
+                </Text>
+              </View>
+            )}
+
+            {slowPayback.length > 0 && (
+              <View style={[styles.attentionRow, { backgroundColor: `${theme.amber}1A`, borderColor: `${theme.amber}33` }]}>
+                <View style={[styles.attentionDot, { backgroundColor: theme.amber }]} />
+                <Text style={[styles.attentionText, { color: theme.foreground }]}>
+                  {tf(
+                    'narrative.highSalesLowProfit',
+                    slowPayback[0].name,
+                    formatNumberRound(slowPayback[0].rev),
+                    formatNumberRound(slowPayback[0].cost),
+                    slowPayback[0].breakEvenPct.toFixed(0)
+                  )}
+                </Text>
+              </View>
+            )}
+
+            {notSelling.length > 0 && fSales.length > 0 && (
+              <View style={[styles.attentionRow, { backgroundColor: theme.surface + '80', borderColor: theme.border }]}>
+                <View style={[styles.attentionDot, { backgroundColor: theme.mutedForeground }]} />
+                <Text style={[styles.attentionText, { color: theme.foreground }]}>
+                  {tf('narrative.notSelling', notSelling.length, notSelling[0].name)}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   scrollContent: { padding: 16, paddingBottom: 32 },
-  screenTitle: { fontSize: 22, fontWeight: '800', marginBottom: 14 },
-  chipRow: { gap: 8, paddingBottom: 12 },
-  chip: {
+  periodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
+  periodChip: {
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 1
   },
-  chipText: { fontSize: 13, fontWeight: '800' },
+  periodChipText: { fontSize: 12, fontWeight: '800' },
   customRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: 8,
     borderRadius: 16,
     borderWidth: 1,
@@ -593,6 +441,7 @@ const styles = StyleSheet.create({
   customLabel: { fontSize: 11, fontWeight: '800' },
   dateInput: {
     flex: 1,
+    minWidth: 120,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -600,92 +449,105 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700'
   },
-  kpiRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
-  kpiCard: {
-    flex: 1,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 14
-  },
-  kpiTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
-    marginBottom: 10
-  },
-  kpiIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  microLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, flexShrink: 1, textAlign: 'right' },
-  kpiValue: { fontSize: 22, fontWeight: '800' },
-  kpiDivider: { height: 1, marginTop: 10, marginBottom: 8 },
-  kpiCaption: { fontSize: 11, fontWeight: '600', lineHeight: 15 },
-  card: {
+  reportCard: {
     borderRadius: 22,
     borderWidth: 1,
     padding: 20,
     marginBottom: 16,
-    gap: 8
+    gap: 10
   },
-  storyBadge: {
+  statusChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     alignSelf: 'flex-start',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 5,
-    borderRadius: 10,
+    borderRadius: 999,
     borderWidth: 1
   },
-  storyDot: { width: 6, height: 6, borderRadius: 3 },
-  storyBadgeText: { fontSize: 11, fontWeight: '800' },
-  storyGreeting: { fontSize: 18, fontWeight: '800', lineHeight: 24 },
-  storyText: { fontSize: 13, fontWeight: '600', lineHeight: 20 },
-  bestName: { fontSize: 16, fontWeight: '800', lineHeight: 22 },
-  cardCaption: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
-  stockSummary: { fontSize: 14, fontWeight: '800' },
-  stockLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  stockLineText: { fontSize: 12, fontWeight: '700', flex: 1 },
-  sectionTitle: { fontSize: 18, fontWeight: '800' },
-  periodLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
-  chartContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-end',
-    height: 170,
-    paddingTop: 8
+  statusChipText: { fontSize: 11, fontWeight: '800' },
+  reportTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.4 },
+  reportGreeting: { fontSize: 16, fontWeight: '800' },
+  headlineBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    marginTop: 2
   },
-  barCol: { alignItems: 'center', flex: 1 },
-  barBg: {
-    width: 14,
-    height: 120,
-    borderRadius: 7,
-    justifyContent: 'flex-end',
-    overflow: 'hidden'
-  },
-  barFill: { width: '100%', borderRadius: 7 },
-  barLabel: { fontSize: 9, fontWeight: '700', marginTop: 6 },
-  insightRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
+  headlineText: { fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  tileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 4 },
+  tile: {
+    flexGrow: 1,
+    flexBasis: '47%',
     borderRadius: 14,
     borderWidth: 1,
-    padding: 12
+    padding: 12,
+    gap: 8
   },
-  insightIcon: {
-    width: 26,
-    height: 26,
+  tileTop: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tileIcon: {
+    width: 30,
+    height: 30,
     borderRadius: 9,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center'
   },
-  insightText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 }
+  tileLabel: { flex: 1, fontSize: 10, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase' },
+  tileValue: { fontSize: 20, fontWeight: '900' },
+  tileHint: { fontSize: 10, fontWeight: '600', lineHeight: 14 },
+  card: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 18,
+    marginBottom: 16
+  },
+  centerCard: { alignItems: 'center', gap: 8 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  cardTitle: { fontSize: 17, fontWeight: '800', letterSpacing: -0.3 },
+  cardSub: { fontSize: 12, fontWeight: '600', lineHeight: 17 },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  bestRow: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    gap: 10
+  },
+  bestMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  bestRank: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  bestRankText: { fontSize: 10, fontWeight: '900', color: '#000' },
+  bestName: { flex: 1, fontSize: 14, fontWeight: '700' },
+  bestRev: { fontSize: 14, fontWeight: '800' },
+  barBg: {
+    width: '100%',
+    height: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden'
+  },
+  barFill: { height: '100%', borderRadius: 999 },
+  attentionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14
+  },
+  attentionDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
+  attentionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 }
 });

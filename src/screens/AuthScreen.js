@@ -24,9 +24,15 @@ import {
 import { Svg, Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../../firebase';
-import * as Google from 'expo-auth-session/providers/google';
+import {
+  GoogleSignin,
+  statusCodes,
+  isSuccessResponse,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin';
 import { Ionicons } from '@expo/vector-icons';
 import { sendTelemetry } from '../config/api';
+import { useAppT } from '../i18n';
 import { gold } from '../utils/theme';
 import BrandLogo from '../components/BrandLogo';
 import LegalModal from '../components/LegalModal';
@@ -36,6 +42,19 @@ const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
 const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 const googleConfigured = !!(WEB_CLIENT_ID || IOS_CLIENT_ID || ANDROID_CLIENT_ID);
+
+if (googleConfigured) {
+  try {
+    GoogleSignin.configure({
+      webClientId: WEB_CLIENT_ID || undefined,
+      iosClientId: IOS_CLIENT_ID || undefined,
+      offlineAccess: false,
+    });
+  } catch (err) {
+    // Native module unavailable (e.g. running in Expo Go) — the button below
+    // shows a clear setup alert instead of crashing.
+  }
+}
 
 const CONSENT_ERROR =
   'You must agree to the Terms & Conditions and Privacy Policy (NDPA 2023) to create your account.';
@@ -68,6 +87,7 @@ function GoogleIcon() {
 }
 
 export default function AuthScreen({ navigation }) {
+  const t = useAppT();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
@@ -80,16 +100,6 @@ export default function AuthScreen({ navigation }) {
   const [focusedField, setFocusedField] = useState(null);
   const [supportOpen, setSupportOpen] = useState(false);
   const toggleX = useRef(new Animated.Value(0)).current;
-
-  // Hooks must always run: expo-auth-session throws if the platform client id
-  // is undefined, so `clientId` carries a harmless placeholder when nothing is
-  // configured (the Google button alerts instead of prompting in that case).
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: WEB_CLIENT_ID || undefined,
-    iosClientId: IOS_CLIENT_ID || undefined,
-    androidClientId: ANDROID_CLIENT_ID || undefined,
-    clientId: WEB_CLIENT_ID || IOS_CLIENT_ID || ANDROID_CLIENT_ID || 'not-configured',
-  });
 
   // If legal was accepted on the landing screen, pre-check consent like the web.
   useEffect(() => {
@@ -107,24 +117,6 @@ export default function AuthScreen({ navigation }) {
       detail: 'Google sign-in error: ' + message,
     });
   };
-
-  useEffect(() => {
-    if (!response) return;
-    if (response.type === 'error') {
-      reportGoogleError(response.error?.message || 'Google sign-in failed.');
-      return;
-    }
-    if (response.type !== 'success') return;
-
-    const idToken = response.params?.id_token || response.authentication?.idToken;
-    if (!idToken) {
-      reportGoogleError('Google sign-in failed: no ID token returned.');
-      return;
-    }
-    signInWithCredential(auth, GoogleAuthProvider.credential(idToken)).catch((err) => {
-      reportGoogleError(err?.message || String(err));
-    });
-  }, [response]);
 
   const handleAuth = async () => {
     if (submitting) return;
@@ -163,7 +155,7 @@ export default function AuthScreen({ navigation }) {
     if (!googleConfigured) {
       Alert.alert(
         'Google Sign-In Not Configured',
-        'Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID / _IOS_ / _ANDROID_ to mobile/.env, then restart Expo.'
+        'Add EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to mobile/.env, then rebuild the development build.'
       );
       return;
     }
@@ -171,10 +163,18 @@ export default function AuthScreen({ navigation }) {
       setAuthError(CONSENT_ERROR);
       return;
     }
-    if (!request || !promptAsync) return;
     try {
-      await promptAsync();
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const result = await GoogleSignin.signIn();
+      if (!isSuccessResponse(result)) return;
+      const idToken = result.data?.idToken || result.idToken;
+      if (!idToken) {
+        reportGoogleError('Google sign-in failed: no ID token returned.');
+        return;
+      }
+      await signInWithCredential(auth, GoogleAuthProvider.credential(idToken));
     } catch (err) {
+      if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) return;
       reportGoogleError(err?.message || String(err));
     }
   };
@@ -237,7 +237,7 @@ export default function AuthScreen({ navigation }) {
               style={styles.tourBtn}
             >
               <Ionicons name="compass-outline" size={14} color="#fbbf24" />
-              <Text style={styles.tourBtnText}>New to marketOS? Explore Product Tour & Guide</Text>
+              <Text style={styles.tourBtnText}>{t('auth.newHint')}</Text>
             </TouchableOpacity>
 
             <Text style={styles.heading}>{isSignUp ? 'Create your account' : 'Welcome back'}</Text>
@@ -258,23 +258,23 @@ export default function AuthScreen({ navigation }) {
 
             <View style={styles.form}>
               {isSignUp &&
-                renderField('USERNAME', username, setUsername, {
+                renderField(t('auth.username'), username, setUsername, {
                   placeholder: 'Your Name or Business',
                   autoCapitalize: 'words',
                 })}
 
-              {renderField('EMAIL', email, setEmail, {
+              {renderField(t('auth.email'), email, setEmail, {
                 placeholder: 'name@example.com',
                 props: { keyboardType: 'email-address', autoCapitalize: 'none' },
               })}
 
-              {renderField('PASSWORD', password, setPassword, {
+              {renderField(t('auth.password'), password, setPassword, {
                 placeholder: '••••••••',
                 props: { secureTextEntry: true },
               })}
 
               {isSignUp &&
-                renderField('CONFIRM PASSWORD', confirmPassword, setConfirmPassword, {
+                renderField(t('auth.confirmPassword'), confirmPassword, setConfirmPassword, {
                   placeholder: '••••••••',
                   props: { secureTextEntry: true },
                 })}
@@ -323,7 +323,7 @@ export default function AuthScreen({ navigation }) {
 
               <View style={styles.dividerRow}>
                 <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
+                <Text style={styles.dividerText}>{t('auth.or')}</Text>
                 <View style={styles.dividerLine} />
               </View>
 
@@ -347,7 +347,7 @@ export default function AuthScreen({ navigation }) {
                 <Text style={styles.footerLink}>Privacy & Consent Policy</Text>
               </TouchableOpacity>
               <Text style={styles.footerDot}>•</Text>
-              <Text style={styles.footerBadge}>NDPA 2023 Compliant</Text>
+              <Text style={styles.footerBadge}>{t('auth.ndpa')}</Text>
             </View>
           </View>
         </ScrollView>

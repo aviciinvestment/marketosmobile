@@ -15,10 +15,13 @@ import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { formatNaira, formatNairaSigned, formatNumber, formatQty } from '../utils/format';
 import { stockOf } from '../utils/finance';
+import { useAppT, useAppTF } from '../i18n';
 
 export const SaleModal = ({ visible, product, onClose }) => {
   const { isDarkMode, sales, addSale } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const [selectedUnitId, setSelectedUnitId] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -61,8 +64,8 @@ export const SaleModal = ({ visible, product, onClose }) => {
   const fractionAfter = st.goodsCost > 0 ? Math.min(1, moneyMadeSoFar / st.goodsCost) : 0;
   const remainingQty = Math.max(0, (product.quantityPurchased || 0) * (1 - fractionAfter));
 
-  const yieldTotal = Number(activeUnit.yieldFromTotal) || 0;
-  const fractionOfTotalSold = yieldTotal > 0 ? qtyNum / yieldTotal : 0;
+  const goodsCost = product.purchasePrice || 0;
+  const fractionOfTotalSold = goodsCost > 0 ? Math.min(1, revenue / goodsCost) : 0;
 
   const canSave = qtyNum > 0 && !!activeUnit;
 
@@ -133,7 +136,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                       letterSpacing: -0.5,
                     }}
                   >
-                    Sale Recorded!
+                    {t('sale.recorded')}
                   </Text>
                   <Text
                     style={{
@@ -144,7 +147,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                       marginBottom: 20,
                     }}
                   >
-                    Stock and financials updated immediately.
+                    {t('sale.recordedDesc')}
                   </Text>
 
                   <View
@@ -153,22 +156,22 @@ export const SaleModal = ({ visible, product, onClose }) => {
                       { backgroundColor: theme.surface, borderColor: theme.border },
                     ]}
                   >
-                    {summaryRow('MONEY RECEIVED', formatNaira(revenue), theme.foreground, false)}
+                    {summaryRow(t('sale.moneyReceived'), formatNaira(revenue), theme.foreground, false)}
                     {summaryRow(
-                      'QUANTITY SOLD',
+                      t('sale.quantitySold'),
                       `${qtyNum} ${activeUnit.name}${qtyNum > 1 ? 's' : ''}`,
                       theme.foreground,
                       false
                     )}
                     {summaryRow(
-                      `PROFIT SO FAR ON ${product.name.toUpperCase()}`,
+                      tf('sale.profitOn', product.name),
                       formatNairaSigned(runningProfit, 0),
                       runningProfit < 0 ? theme.rose : theme.emerald,
                       false
                     )}
                     {summaryRow(
-                      'REMAINING STOCK',
-                      `${formatQty(remainingQty)} ${product.purchaseUnit || 'units'} left`,
+                      t('sale.remainingStock'),
+                      tf('sale.left', `${formatQty(remainingQty)} ${product.purchaseUnit || 'units'}`),
                       theme.foreground,
                       true
                     )}
@@ -177,9 +180,9 @@ export const SaleModal = ({ visible, product, onClose }) => {
                   <TouchableOpacity
                     activeOpacity={0.85}
                     onPress={onClose}
-                    style={[styles.primaryBtn, { backgroundColor: theme.primary }]}
+                    style={[styles.primaryBtn, { backgroundColor: '#ffffff' }]}
                   >
-                    <Text style={styles.primaryBtnText}>Done</Text>
+                    <Text style={styles.primaryBtnText}>{t('sale.done')}</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -195,7 +198,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                           marginBottom: 4,
                         }}
                       >
-                        NEW SALE
+                        {t('sale.new')}
                       </Text>
                       <Text
                         style={{
@@ -221,7 +224,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
 
                   {hasUnits && (
                     <View style={{ marginTop: 20 }}>
-                      <Text style={[micro, { marginBottom: 10 }]}>SELECT UNIT SOLD</Text>
+                      <Text style={[micro, { marginBottom: 10 }]}>{t('sale.selectUnit')}</Text>
                       <View style={styles.unitGrid}>
                         {units.map((unit) => {
                           const active = activeUnit.id === unit.id;
@@ -253,7 +256,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                                 {unit.name}
                               </Text>
                               <Text style={{ fontSize: 11, fontWeight: '800', color: theme.gold }}>
-                                {formatNaira(Number(unit.price) || 0)} each
+                                {formatNaira(Number(unit.price) || 0)}
                               </Text>
                             </TouchableOpacity>
                           );
@@ -263,7 +266,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                   )}
 
                   <View style={{ marginTop: 20 }}>
-                    <Text style={[micro, { marginBottom: 8 }]}>SELLING PRICE</Text>
+                    <Text style={[micro, { marginBottom: 8 }]}>{t('sale.sellingPrice')}</Text>
                     <View
                       style={[
                         styles.inputRow,
@@ -291,13 +294,13 @@ export const SaleModal = ({ visible, product, onClose }) => {
                     </View>
                     {price !== '' && Number(price) > 0 && (
                       <Text style={{ fontSize: 10, fontWeight: '800', color: theme.gold, marginTop: 6 }}>
-                        Custom price{unitPrice > 0 ? ` — unit price is ${formatNaira(unitPrice)}` : ''}
+                        {tf('sale.customPrice', unitPrice > 0 ? formatNaira(unitPrice) : '')}
                       </Text>
                     )}
                   </View>
 
                   <View style={{ marginTop: 20 }}>
-                    <Text style={[micro, { marginBottom: 8 }]}>QUANTITY</Text>
+                    <Text style={[micro, { marginBottom: 8 }]}>{t('sale.quantity')}</Text>
                     <View
                       style={[
                         styles.qtyRow,
@@ -332,9 +335,14 @@ export const SaleModal = ({ visible, product, onClose }) => {
                     )}
                   </View>
 
-                  <View style={[styles.review, { backgroundColor: theme.surface, borderColor: theme.border, marginTop: 20 }]}>
+                  <View
+                    style={[
+                      styles.review,
+                      { backgroundColor: theme.surface, borderColor: theme.border, marginTop: 20 },
+                    ]}
+                  >
                     <View style={styles.reviewRow}>
-                      <Text style={micro}>MONEY RECEIVED</Text>
+                      <Text style={micro}>{t('sale.moneyReceived')}</Text>
                       <Text style={{ fontSize: 26, fontWeight: '900', color: theme.foreground, marginTop: 4 }}>
                         {formatNaira(revenue)}
                       </Text>
@@ -342,7 +350,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                     {(product.purchasePrice || 0) > 0 && (
                       <View style={[styles.reviewRow, styles.reviewDivider, { borderTopColor: theme.border }]}>
                         <Text style={{ fontSize: 12, color: theme.mutedForeground, flexShrink: 1 }}>
-                          Profit so far on {product.name}
+                          {tf('sale.profitOn', product.name)}
                         </Text>
                         <View
                           style={{
@@ -365,18 +373,6 @@ export const SaleModal = ({ visible, product, onClose }) => {
                         </View>
                       </View>
                     )}
-                    <View
-                      style={[
-                        styles.reviewRow,
-                        styles.reviewDivider,
-                        { borderTopColor: theme.border, marginBottom: 0, paddingBottom: 0, borderBottomWidth: 0 },
-                      ]}
-                    >
-                      <Text style={micro}>REMAINING STOCK</Text>
-                      <Text style={{ fontSize: 13, fontWeight: '800', color: theme.foreground, marginLeft: 10 }}>
-                        {formatQty(remainingQty)} {product.purchaseUnit || 'units'} left
-                      </Text>
-                    </View>
                   </View>
 
                   <TouchableOpacity
@@ -388,7 +384,7 @@ export const SaleModal = ({ visible, product, onClose }) => {
                       { backgroundColor: theme.primary, marginTop: 20, opacity: canSave ? 1 : 0.5 },
                     ]}
                   >
-                    <Text style={styles.primaryBtnText}>Record Sale</Text>
+                    <Text style={styles.primaryBtnText}>{t('sale.record')}</Text>
                   </TouchableOpacity>
                 </View>
               )}

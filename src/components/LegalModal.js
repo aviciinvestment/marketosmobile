@@ -321,7 +321,7 @@ export default function LegalModal({ visible, initialTab = 'privacy', onClose, o
                   >
                     <Ionicons name="checkmark-circle" size={15} color="#000" />
                     <Text style={{ fontSize: 12, fontWeight: '800', color: '#000', marginLeft: 6 }}>
-                      Accept & Continue
+                      Accept & Consent
                     </Text>
                   </TouchableOpacity>
                 ) : null}

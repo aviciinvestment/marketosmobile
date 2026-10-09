@@ -16,22 +16,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { getApiEndpoints } from '../config/api';
+import { useAppT, useAppTF } from '../i18n';
 
 const STORAGE_KEY = 'marketos_offline_complaints';
 
 const CATEGORIES = [
-  { value: 'Sync & Connection', label: 'Offline Sync & Network' },
-  { value: 'Sales & Quick Sell', label: 'Quick Sell & Recording Issue' },
-  { value: 'Stock & Yields', label: 'Products, Inventory & Yields' },
-  { value: 'Calculations & Profit', label: 'Profit/Cashflow Calculations' },
-  { value: 'Account & Auth', label: 'Login / Account Auth' },
-  { value: 'Feature Request', label: 'Suggestion / Feature Request' },
-  { value: 'Urgent Bug', label: 'Other Urgent Bug' },
+  { value: 'Sync & Connection', labelKey: 'support.catSync' },
+  { value: 'Sales & Quick Sell', labelKey: 'support.catSales' },
+  { value: 'Stock & Yields', labelKey: 'support.catStock' },
+  { value: 'Calculations & Profit', labelKey: 'support.catCalc' },
+  { value: 'Account & Auth', labelKey: 'support.catAuth' },
+  { value: 'Feature Request', labelKey: 'support.catFeature' },
+  { value: 'Urgent Bug', labelKey: 'support.catBug' },
 ];
 
 export default function SupportWidget({ visible, onClose }) {
   const { user, isDarkMode, online } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const T = useAppT();
+  const TF = useAppTF();
 
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState(user?.email || '');
@@ -154,11 +157,11 @@ export default function SupportWidget({ visible, onClose }) {
 
     const cleanPhone = phoneNumber.replace(/[\s-]/g, '');
     if (!cleanPhone || cleanPhone.length < 10) {
-      setErrorMessage('Please provide a valid active phone number (e.g. 08012345678 or +234...)');
+      setErrorMessage(T('support.errPhone'));
       return;
     }
     if (!message.trim()) {
-      setErrorMessage('Please describe the issue or complaint in detail.');
+      setErrorMessage(T('support.errMsg'));
       return;
     }
 
@@ -227,7 +230,7 @@ export default function SupportWidget({ visible, onClose }) {
                 </View>
                 <View style={{ marginLeft: 10, flex: 1 }}>
                   <Text style={{ fontSize: 14, fontWeight: '800', color: theme.foreground }}>
-                    Merchant Support Desk
+                    {T('support.title')}
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
                     <Ionicons
@@ -238,11 +241,11 @@ export default function SupportWidget({ visible, onClose }) {
                     <Text style={{ fontSize: 11, color: theme.mutedForeground, marginLeft: 4 }}>
                       {isOnline ? (
                         <>
-                          <Text style={{ color: theme.emerald, fontWeight: '700' }}>Online</Text> • Direct dispatch to founder
+                          <Text style={{ color: theme.emerald, fontWeight: '700' }}>{T('support.online')}</Text> • {T('support.direct')}
                         </>
                       ) : (
                         <>
-                          <Text style={{ color: theme.amber, fontWeight: '700' }}>Offline</Text> • Saved to local device
+                          <Text style={{ color: theme.amber, fontWeight: '700' }}>{T('support.offline')}</Text> • {T('support.savedLocal')}
                         </>
                       )}
                     </Text>
@@ -272,7 +275,7 @@ export default function SupportWidget({ visible, onClose }) {
                 >
                   <Ionicons name="time-outline" size={12} color={theme.amber} />
                   <Text style={{ fontSize: 11, fontWeight: '800', color: theme.amber, marginLeft: 5 }}>
-                    {offlineQueueCount} complaint{offlineQueueCount > 1 ? 's' : ''} queued offline
+                    {TF('support.queued', offlineQueueCount)}
                   </Text>
                 </View>
               )}
@@ -283,10 +286,9 @@ export default function SupportWidget({ visible, onClose }) {
                 >
                   <Ionicons name="checkmark-circle" size={18} color={theme.emerald} style={{ marginTop: 1 }} />
                   <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.emerald }}>Complaint Received!</Text>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: theme.emerald }}>{T('support.gotTitle')}</Text>
                     <Text style={{ fontSize: 11, color: theme.emerald, opacity: 0.85, marginTop: 3, lineHeight: 16 }}>
-                      Our founder and support engineering team have received your log. We will reach you on your phone
-                      number shortly.
+                      {T('support.gotDesc')}
                     </Text>
                   </View>
                 </View>
@@ -297,11 +299,10 @@ export default function SupportWidget({ visible, onClose }) {
                   <Ionicons name="time-outline" size={18} color={theme.amber} style={{ marginTop: 1 }} />
                   <View style={{ flex: 1, marginLeft: 10 }}>
                     <Text style={{ fontSize: 14, fontWeight: '800', color: theme.amber }}>
-                      Saved in Local Storage (Offline)
+                      {T('support.savedTitle')}
                     </Text>
                     <Text style={{ fontSize: 11, color: theme.amber, opacity: 0.85, marginTop: 3, lineHeight: 16 }}>
-                      You appear to be offline or server is connecting. Your complaint is safely stored on your device
-                      and will dispatch automatically once internet reconnects!
+                      {T('support.savedDesc')}
                     </Text>
                   </View>
                 </View>
@@ -316,27 +317,29 @@ export default function SupportWidget({ visible, onClose }) {
                 </View>
               ) : null}
 
-              <Text style={[micro, { marginBottom: 8 }]}>YOUR PHONE NUMBER *</Text>
+              <Text style={[micro, { marginBottom: 8 }]}>{T('support.phoneLabel')} *</Text>
               <TextInput
                 style={[
                   styles.input,
                   {
                     backgroundColor: theme.surface,
-                    borderColor: errorMessage.includes('phone number') ? theme.red : theme.border,
+                    borderColor: errorMessage === T('support.errPhone') ? theme.red : theme.border,
                     color: theme.foreground,
                   },
                 ]}
                 value={phoneNumber}
                 onChangeText={setPhoneNumber}
-                placeholder="e.g. 08023456789 or +234..."
+                placeholder={T('support.phonePlaceholder')}
                 placeholderTextColor={theme.mutedForeground}
                 keyboardType="phone-pad"
               />
               <Text style={{ fontSize: 10, color: theme.mutedForeground, marginTop: 4 }}>
-                For direct call/WhatsApp
+                {T('support.phoneHint')}
               </Text>
 
-              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>EMAIL ADDRESS (OPTIONAL)</Text>
+              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>
+                {T('support.emailLabel')} {T('support.emailOptional')}
+              </Text>
               <TextInput
                 style={[
                   styles.input,
@@ -344,13 +347,13 @@ export default function SupportWidget({ visible, onClose }) {
                 ]}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="e.g. store@market.ng"
+                placeholder={T('support.emailPlaceholder')}
                 placeholderTextColor={theme.mutedForeground}
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
 
-              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>CATEGORY</Text>
+              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>{T('support.category')}</Text>
               <View style={styles.chipGrid}>
                 {CATEGORIES.map((c) => {
                   const active = category === c.value;
@@ -375,27 +378,27 @@ export default function SupportWidget({ visible, onClose }) {
                           textAlign: 'center',
                         }}
                       >
-                        {c.label}
+                        {T(c.labelKey)}
                       </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
 
-              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>DESCRIBE WHAT WENT WRONG *</Text>
+              <Text style={[micro, { marginTop: 16, marginBottom: 8 }]}>{T('support.issueLabel')} *</Text>
               <TextInput
                 style={[
                   styles.input,
                   styles.textarea,
                   {
                     backgroundColor: theme.surface,
-                    borderColor: errorMessage.includes('describe') ? theme.red : theme.border,
+                    borderColor: errorMessage === T('support.errMsg') ? theme.red : theme.border,
                     color: theme.foreground,
                   },
                 ]}
                 value={message}
                 onChangeText={setMessage}
-                placeholder="Provide details on what you were doing, what error appeared, or what you need resolved..."
+                placeholder={T('support.issuePlaceholder')}
                 placeholderTextColor={theme.mutedForeground}
                 multiline
                 textAlignVertical="top"
@@ -415,14 +418,13 @@ export default function SupportWidget({ visible, onClose }) {
                   {isSubmitting
                     ? 'Sending...'
                     : isOnline
-                      ? 'Send Complaint Directly'
-                      : 'Save Offline in Local Storage'}
+                      ? T('support.sendOnline')
+                      : T('support.saveOffline')}
                 </Text>
               </TouchableOpacity>
 
               <Text style={{ fontSize: 10, color: theme.mutedForeground, textAlign: 'center', marginTop: 10, lineHeight: 15 }}>
-                Complaints are stored locally when offline and dispatched directly to the founder for immediate
-                resolution.
+                {T('support.footNote')}
               </Text>
             </ScrollView>
           </View>

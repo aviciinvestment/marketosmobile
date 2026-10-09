@@ -3,8 +3,9 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIn
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
-import { formatNaira, formatRelative } from '../utils/format';
+import { formatNumber, formatRelative } from '../utils/format';
 import { calculateFinancials, stockOf } from '../utils/finance';
+import { useAppT, useAppLang, t, tf } from '../i18n';
 
 // Derive the notification list straight from the data, so it is always current.
 // Pure & cheap: the app header calls this on every render for its badge dot.
@@ -17,6 +18,7 @@ export function buildNotifications(products, sales, expenses, options = {}) {
   const online = opts.online !== false;
   const syncError = !!opts.syncError;
   const otherDevicePending = Array.isArray(opts.otherDevicePending) ? opts.otherDevicePending : [];
+  const lang = opts.lang || 'en';
 
   const now = new Date().toISOString();
   const stamp = Date.now();
@@ -32,16 +34,16 @@ export function buildNotifications(products, sales, expenses, options = {}) {
     notes.push({
       id: `profit-${stamp}`,
       icon: 'profit',
-      title: 'You are making money',
-      message: `After covering your goods and expenses you are ${formatNaira(netProfit)} in profit. Keep it up!`,
+      title: t(lang, 'notif.makingMoney'),
+      message: tf(lang, 'notif.afterCosts', formatNumber(netProfit)),
       time: now,
     });
   } else if (totalSales > 0 && grossProfit > 0 && netProfit <= 0) {
     notes.push({
       id: `gross-profit-${stamp}`,
       icon: 'profit',
-      title: 'Sales are covering your goods',
-      message: `Your products earned ${formatNaira(grossProfit)} in profit, but expenses are eating into it.`,
+      title: t(lang, 'notif.coveringGoods'),
+      message: tf(lang, 'notif.costsEating', formatNumber(grossProfit)),
       time: now,
     });
   }
@@ -51,16 +53,16 @@ export function buildNotifications(products, sales, expenses, options = {}) {
     notes.push({
       id: `spending-${stamp}`,
       icon: 'spending',
-      title: 'Spending too much',
-      message: `Your expenses (${formatNaira(totalExpenses)}) have matched or passed everything you made (${formatNaira(totalSales)}). Trim costs before you run dry.`,
+      title: t(lang, 'notif.spendingTooMuch'),
+      message: tf(lang, 'notif.spendingMatch', formatNumber(totalExpenses), formatNumber(totalSales)),
       time: now,
     });
   } else if (totalExpenses > 0 && totalExpenses >= grossProfit) {
     notes.push({
       id: `spending-profit-${stamp}`,
       icon: 'spending',
-      title: 'Expenses are wiping out your profit',
-      message: `You spent ${formatNaira(totalExpenses)} while your products only made ${formatNaira(grossProfit)}. Watch your spending.`,
+      title: t(lang, 'notif.wipingProfit'),
+      message: tf(lang, 'notif.watchingSpend', formatNumber(totalExpenses), formatNumber(grossProfit)),
       time: now,
     });
   }
@@ -73,16 +75,16 @@ export function buildNotifications(products, sales, expenses, options = {}) {
       notes.push({
         id: `break-even-${p.id}-${stamp}`,
         icon: 'break-even',
-        title: `${p.name} is fully paid back`,
-        message: `Every naira you spent on ${p.name} (${formatNaira(s.goodsCost)}) has been recovered. It is now pure profit.`,
+        title: tf(lang, 'notif.paidBack', p.name),
+        message: tf(lang, 'notif.paidBackMsg', p.name, formatNumber(s.goodsCost)),
         time: now,
       });
     } else if (s.moneyMade > 0 && s.fractionConsumed >= 0.5 && s.fractionConsumed < 1) {
       notes.push({
         id: `halfway-${p.id}-${stamp}`,
         icon: 'break-even',
-        title: `${p.name} is halfway to breaking even`,
-        message: `You have recovered ${(s.fractionConsumed * 100).toFixed(0)}% of the ${formatNaira(s.goodsCost)} it cost. Keep selling.`,
+        title: tf(lang, 'notif.halfway', p.name),
+        message: tf(lang, 'notif.halfwayMsg', (s.fractionConsumed * 100).toFixed(0), formatNumber(s.goodsCost)),
         time: now,
       });
     }
@@ -93,7 +95,7 @@ export function buildNotifications(products, sales, expenses, options = {}) {
     notes.push({
       id: `offline-${stamp}`,
       icon: 'offline',
-      title: 'You are offline',
+      title: t(lang, 'banner.offlineTitle'),
       message: 'Records you add are saved on this device and will reach the cloud once you are back online.',
       time: now,
     });
@@ -111,11 +113,8 @@ export function buildNotifications(products, sales, expenses, options = {}) {
     notes.push({
       id: `other-device-${stamp}`,
       icon: 'offline',
-      title: 'Another device has unsaved records',
-      message:
-        otherDevicePending.length > 1
-          ? `${otherDevicePending.length} devices recorded data that hasn't synced yet. Go online on that device so everything appears here.`
-          : "A device recorded data that hasn't reached the cloud yet. Go online on that device so everything appears here.",
+      title: t(lang, 'notif.anotherDevice'),
+      message: `${otherDevicePending.length > 1 ? tf(lang, 'notif.devicesPending', otherDevicePending.length) : t(lang, 'notif.devicePending')} ${t(lang, 'notif.goOnline')}`,
       time: now,
     });
   }
@@ -135,12 +134,14 @@ export default function NotificationsPanel({ visible, onClose }) {
   const { isDarkMode, products, sales, expenses, online, lastSyncAt, syncError, otherDevicePending, forceSync, isSyncing } =
     useSyncContext();
   const theme = getTheme(isDarkMode);
+  const lang = useAppLang();
+  const T = useAppT();
 
   const pending = Array.isArray(otherDevicePending) ? otherDevicePending : [];
 
   const notes = useMemo(
-    () => buildNotifications(products, sales, expenses, { online, lastSyncAt, syncError, otherDevicePending: pending }),
-    [products, sales, expenses, online, lastSyncAt, syncError, pending.length]
+    () => buildNotifications(products, sales, expenses, { online, lastSyncAt, syncError, otherDevicePending: pending, lang }),
+    [products, sales, expenses, online, lastSyncAt, syncError, pending.length, lang]
   );
 
   // The pending-device card below already covers this case (web parity).
@@ -162,10 +163,10 @@ export default function NotificationsPanel({ visible, onClose }) {
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.foreground, fontSize: 18, fontWeight: '900', letterSpacing: -0.4 }}>
-                Notifications
+                {T('notif.title')}
               </Text>
               <Text style={{ fontSize: 11, color: theme.mutedForeground, marginTop: 2 }}>
-                Milestones, warnings & sync updates
+                {T('notif.subtitle')}
               </Text>
             </View>
             <TouchableOpacity
@@ -196,13 +197,13 @@ export default function NotificationsPanel({ visible, onClose }) {
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 12, fontWeight: '800', color: theme.foreground }}>
-                      Another device has unsaved records
+                      {T('notif.anotherDevice')}
                     </Text>
                     <Text style={{ fontSize: 11, color: theme.sky, marginTop: 3, lineHeight: 16 }}>
                       {pending.length > 1
-                        ? `${pending.length} devices recorded data that hasn't synced yet.`
-                        : "A device recorded data that hasn't reached the cloud yet."}{' '}
-                      Go online on that device so everything appears here.
+                        ? tf(lang, 'notif.devicesPending', pending.length)
+                        : T('notif.devicePending')}{' '}
+                      {T('notif.goOnline')}
                     </Text>
                   </View>
                 </View>
@@ -218,7 +219,7 @@ export default function NotificationsPanel({ visible, onClose }) {
                     <Ionicons name="refresh" size={13} color="#fff" />
                   )}
                   <Text style={{ fontSize: 11, fontWeight: '800', color: '#fff', marginLeft: isSyncing ? 6 : 5 }}>
-                    {isSyncing ? 'Pulling...' : 'Pull latest now'}
+                    {isSyncing ? 'Pulling...' : T('notif.pullLatest')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -232,7 +233,7 @@ export default function NotificationsPanel({ visible, onClose }) {
                   <Ionicons name="sparkles-outline" size={24} color={theme.primary} />
                 </View>
                 <Text style={{ fontSize: 14, fontWeight: '800', color: theme.foreground, marginTop: 14 }}>
-                  All quiet for now
+                  {T('notif.quiet')}
                 </Text>
                 <Text
                   style={{
@@ -244,7 +245,7 @@ export default function NotificationsPanel({ visible, onClose }) {
                     paddingHorizontal: 24,
                   }}
                 >
-                  You will get notified here when you reach break-even, start profiting, or spend too much.
+                  {T('notif.quietDesc')}
                 </Text>
               </View>
             ) : (

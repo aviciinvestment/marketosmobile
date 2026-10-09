@@ -9,41 +9,19 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Pressable
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
+import { formatNaira } from '../utils/format';
+import { useAppT, useAppTF } from '../i18n';
 
-const CATEGORY_OPTIONS = [
-  'General',
-  'Food & Drinks',
-  'Beauty',
-  'Stationery',
-  'Electronics',
-  'Other'
-];
-
-const STATUS_OPTIONS = ['Active', 'Draft', 'Archived'];
-
-const PURCHASE_UNIT_OPTIONS = [
-  'Units',
-  'Litres',
-  'Bags',
-  'Cartons',
-  'Packs',
-  'Pieces',
-  'Kg',
-  'g',
-  'ml',
-  'Boxes',
-  'Rolls'
-];
-
-export default function ProductModal({ visible, product, onClose }) {
+export default function ProductModal({ visible, product, onClose, onSave }) {
   const ctx = useSyncContext();
   const { isDarkMode, saveProduct } = ctx;
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const [form, setForm] = useState(null);
   const [error, setError] = useState('');
@@ -63,569 +41,461 @@ export default function ProductModal({ visible, product, onClose }) {
     onClose();
   };
 
+  if (!visible || !form) return null;
+
+  const unitFallback = t('product.soldAsExample');
+  const purchasePrice = Number(form.purchasePrice) || 0;
+  const qtyPurchased = Number(form.quantityPurchased) || 0;
+
   const addSellingUnit = () => {
-    if (!form) return;
-    const newUnit = {
-      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      name: '',
-      yieldFromTotal: '',
-      price: 0
-    };
     setForm({
       ...form,
-      sellingUnits: [...(form.sellingUnits || []), newUnit]
+      sellingUnits: [
+        ...(form.sellingUnits || []),
+        { id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, name: '', yieldFromTotal: 0, price: '' },
+      ],
     });
   };
 
   const updateSellingUnit = (id, field, value) => {
-    if (!form) return;
     setForm({
       ...form,
-      sellingUnits: form.sellingUnits.map((u) =>
-        u.id === id ? { ...u, [field]: value } : u
-      )
+      sellingUnits: (form.sellingUnits || []).map((u) => (u.id === id ? { ...u, [field]: value } : u)),
     });
   };
 
   const removeSellingUnit = (id) => {
-    if (!form) return;
-    const units = form.sellingUnits || [];
-    if (units.length <= 1) return;
     setForm({
       ...form,
-      sellingUnits: units.filter((u) => u.id !== id)
+      sellingUnits: (form.sellingUnits || []).filter((u) => u.id !== id),
     });
   };
 
   const handleSave = () => {
-    if (!form) return;
-    if (!form.name || !form.name.trim()) {
-      setError('Product name is required.');
+    if (!form.name || !form.purchasePrice || !form.quantityPurchased || !form.purchaseUnit) {
+      setError(t('product.errBasic'));
       return;
     }
-
-    const qty = Number(form.quantityPurchased) || 0;
-    if (qty <= 0) {
-      setError('Quantity purchased must be greater than 0.');
-      return;
-    }
-
     const units = form.sellingUnits || [];
     if (units.length === 0) {
-      setError('Please add at least one selling unit.');
+      setError(t('product.errNoWays'));
       return;
     }
-
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
-      if (!u.name || !u.name.trim()) {
-        setError('Each selling unit must have a name.');
+      if (!u.name || !u.price || Number(u.price) <= 0) {
+        setError(tf('product.errWay', u.name || unitFallback));
         return;
       }
     }
-
-    const defaultYield = qty || 1;
+    const defaultYield = qtyPurchased || 1;
     const sellingUnits = units.map((u) => {
-      const y = Number(u.yieldFromTotal) || 0;
+      const y = Number(u.yieldFromTotal);
       const yieldFromTotal = y > 0 ? y : defaultYield;
-      const price = Number(u.price) || 0;
-      return {
-        ...u,
-        name: (u.name || '').trim(),
-        yieldFromTotal,
-        price
-      };
+      return { ...u, yieldFromTotal, price: Number(u.price) || 0 };
     });
-
     const saved = {
       ...form,
       id: form.id || Date.now().toString(),
-      name: form.name.trim(),
-      category: form.category || 'General',
-      purchasePrice: Number(form.purchasePrice) || 0,
-      quantityPurchased: qty,
-      purchaseUnit: form.purchaseUnit || 'Units',
-      datePurchased: form.datePurchased || new Date().toISOString(),
-      fractionConsumed: form.fractionConsumed || 0,
-      status: form.status || 'Active',
+      name: String(form.name).trim(),
+      purchasePrice,
+      quantityPurchased: qtyPurchased,
       sellingUnits,
-      updatedAt: Date.now()
     };
-
     setError('');
-    saveProduct(saved);
-    handleClose();
+    if (typeof onSave === 'function') onSave(saved);
+    else {
+      saveProduct(saved);
+      handleClose();
+    }
   };
 
-  if (!visible || !form) return null;
-
-  const purchasePrice = Number(form.purchasePrice) || 0;
-  const qtyPurchased = Number(form.quantityPurchased) || 0;
-  const costPerUnit = (qtyPurchased > 0 ? purchasePrice / qtyPurchased : 0);
+  const renderSectionHead = (num, title, right) => (
+    <View style={[styles.sectionHead, { borderBottomColor: theme.border }]}>
+      <View style={styles.sectionHeadLeft}>
+        <View style={[styles.numCircle, { backgroundColor: theme.primary + '26', borderColor: theme.primary + '4D' }]}>
+          <Text style={[styles.numText, { color: theme.primary }]}>{num}</Text>
+        </View>
+        <Text style={[styles.sectionTitle, { color: theme.foreground }]}>{title}</Text>
+      </View>
+      {right}
+    </View>
+  );
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={handleClose}
-    >
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.overlay}
-      >
-        <View style={[styles.sheet, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: theme.foreground }]}>
-              {product && product.name ? 'Edit Item' : 'Add New Item to Stock'}
-            </Text>
-            <TouchableOpacity onPress={handleClose} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={theme.mutedForeground} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {error ? (
-              <View
-                style={[
-                  styles.errorBox,
-                  { backgroundColor: `${theme.rose}10`, borderColor: `${theme.rose}40` }
-                ]}
-              >
-                <Ionicons name="alert-circle-outline" size={16} color={theme.rose} />
-                <Text style={[styles.errorText, { color: theme.rose }]}>{error}</Text>
-              </View>
-            ) : null}
-
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.foreground }]}>Product Details</Text>
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Item Name</Text>
-              <TextInput
-                value={form.name || ''}
-                onChangeText={(v) => setForm({ ...form, name: v })}
-                placeholder="e.g. Kings Cooking Oil"
-                placeholderTextColor={theme.mutedForeground}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                ]}
-              />
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Category</Text>
-              <View style={styles.chipRowWrap}>
-                {CATEGORY_OPTIONS.map((cat) => {
-                  const selected = (form.category || 'General') === cat;
-                  return (
-                    <Pressable
-                      key={cat}
-                      onPress={() => setForm({ ...form, category: cat })}
-                      style={[
-                        styles.chip,
-                        {
-                          backgroundColor: selected ? theme.primary : theme.surface,
-                          borderColor: theme.border
-                        }
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: selected ? '#000' : theme.foreground }]}>
-                        {cat}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Status</Text>
-              <View style={styles.chipRowWrap}>
-                {STATUS_OPTIONS.map((st) => {
-                  const selected = (form.status || 'Active') === st;
-                  let bg = theme.surface;
-                  if (selected) {
-                    if (st === 'Active') bg = theme.emerald;
-                    else if (st === 'Draft') bg = theme.amber;
-                    else bg = theme.muted;
-                  }
-                  return (
-                    <Pressable
-                      key={st}
-                      onPress={() => setForm({ ...form, status: st })}
-                      style={[
-                        styles.chip,
-                        { backgroundColor: bg, borderColor: theme.border }
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: selected ? '#000' : theme.foreground }]}>
-                        {st}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
+      <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={handleClose} />
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
+          <View style={[styles.sheet, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.header}>
+              <Text style={[styles.chip, { color: theme.gold }]}>
+                {product && product.name ? t('product.editChip') : t('product.newChip')}
+              </Text>
+              <Text style={[styles.headerTitle, { color: theme.foreground }]}>
+                {product && product.name ? t('product.editTitle') : t('product.newTitle')}
+              </Text>
             </View>
 
-            <View style={styles.section}>
-              <Text style={[styles.sectionTitle, { color: theme.foreground }]}>Purchase Info</Text>
-
-              <View style={styles.row}>
-                <View style={styles.flex1}>
-                  <Text style={[styles.label, { color: theme.mutedForeground }]}>Quantity Purchased</Text>
-                  <TextInput
-                    keyboardType="numeric"
-                    value={form.quantityPurchased === 0 ? '' : String(form.quantityPurchased)}
-                    onChangeText={(v) => setForm({ ...form, quantityPurchased: parseFloat(v) || 0 })}
-                    placeholder="1"
-                    placeholderTextColor={theme.mutedForeground}
-                    style={[
-                      styles.input,
-                      { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                    ]}
-                  />
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {error ? (
+                <View
+                  style={[
+                    styles.errorBox,
+                    { backgroundColor: theme.rose + '1A', borderColor: theme.rose + '4D' },
+                  ]}
+                >
+                  <Ionicons name="alert-circle" size={16} color={theme.rose} />
+                  <Text style={[styles.errorText, { color: theme.rose }]}>{error}</Text>
                 </View>
-                <View style={styles.flex1}>
-                  <Text style={[styles.label, { color: theme.mutedForeground }]}>Purchase Unit</Text>
-                  <View style={styles.chipRowWrap}>
-                    {PURCHASE_UNIT_OPTIONS.slice(0, 6).map((unit) => {
-                      const selected = (form.purchaseUnit || 'Units') === unit;
-                      return (
-                        <Pressable
-                          key={unit}
-                          onPress={() => setForm({ ...form, purchaseUnit: unit })}
+              ) : null}
+
+              {/* 1. Item name */}
+              <View style={styles.section}>
+                {renderSectionHead('1', t('product.sec1Title'))}
+                <Text style={[styles.label, { color: theme.mutedForeground }]}>{t('product.nameLabel')}</Text>
+                <TextInput
+                  value={form.name || ''}
+                  onChangeText={(v) => setForm({ ...form, name: v })}
+                  placeholder={t('product.namePlaceholder')}
+                  placeholderTextColor={theme.mutedForeground}
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+                />
+              </View>
+
+              {/* 2. What you paid */}
+              <View style={styles.section}>
+                {renderSectionHead('2', t('product.sec2Title'))}
+
+                <Text style={[styles.label, { color: theme.mutedForeground }]}>{t('product.qtyLabel')}</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={String(form.quantityPurchased || '')}
+                  onChangeText={(v) => setForm({ ...form, quantityPurchased: parseFloat(v) || 0 })}
+                  placeholder="e.g. 25"
+                  placeholderTextColor={theme.mutedForeground}
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+                />
+
+                <Text style={[styles.label, { color: theme.mutedForeground }]}>{t('product.boughtAsLabel')}</Text>
+                <TextInput
+                  value={form.purchaseUnit || ''}
+                  onChangeText={(v) => setForm({ ...form, purchaseUnit: v })}
+                  placeholder={t('product.boughtAsPlaceholder')}
+                  placeholderTextColor={theme.mutedForeground}
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+                />
+                <Text style={[styles.hint, { color: theme.mutedForeground }]}>{t('product.boughtAsHint')}</Text>
+
+                <Text style={[styles.label, { color: theme.mutedForeground }]}>{t('product.totalCostLabel')}</Text>
+                <TextInput
+                  keyboardType="numeric"
+                  value={String(form.purchasePrice || '')}
+                  onChangeText={(v) => setForm({ ...form, purchasePrice: parseFloat(v) || 0 })}
+                  placeholder={t('product.totalCostPlaceholder')}
+                  placeholderTextColor={theme.mutedForeground}
+                  style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+                />
+              </View>
+
+              {/* 3. How you sell it */}
+              <View style={styles.section}>
+                {renderSectionHead(
+                  '3',
+                  t('product.sec3Title'),
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    onPress={addSellingUnit}
+                    style={[styles.addWayBtn, { backgroundColor: theme.primary }]}
+                  >
+                    <Ionicons name="add" size={14} color="#000" />
+                    <Text style={styles.addWayBtnText}>{t('product.addWay')}</Text>
+                  </TouchableOpacity>
+                )}
+
+                {(form.sellingUnits || []).length === 0 ? (
+                  <View style={[styles.emptyWays, { borderColor: theme.border }]}>
+                    <Text style={[styles.emptyWaysText, { color: theme.mutedForeground }]}>{t('product.noWays')}</Text>
+                    <TouchableOpacity
+                      activeOpacity={0.85}
+                      onPress={addSellingUnit}
+                      style={[styles.addWayBtn, { backgroundColor: theme.primary }]}
+                    >
+                      <Ionicons name="add" size={14} color="#000" />
+                      <Text style={styles.addWayBtnText}>{t('product.addWay')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  (form.sellingUnits || []).map((unit) => {
+                    const unitName = unit.name || unitFallback;
+                    const y = Number(unit.yieldFromTotal) || 0;
+                    const priceU = Number(unit.price) || 0;
+                    const costPerItem = y > 0 ? purchasePrice / y : 0;
+                    const profitPerItem = priceU - costPerItem;
+                    const isLoss = y > 0 && priceU > 0 && profitPerItem < 0;
+
+                    return (
+                      <View
+                        key={unit.id}
+                        style={[styles.unitCard, { backgroundColor: theme.surface + '80', borderColor: theme.border }]}
+                      >
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => removeSellingUnit(unit.id)}
+                          style={[styles.removeBtn, { backgroundColor: theme.card, borderColor: theme.border }]}
+                        >
+                          <Ionicons name="trash-outline" size={14} color={theme.mutedForeground} />
+                        </TouchableOpacity>
+
+                        <Text style={[styles.label, { color: theme.mutedForeground }]}>{t('product.soldAsLabel')}</Text>
+                        <TextInput
+                          value={unit.name || ''}
+                          onChangeText={(v) => updateSellingUnit(unit.id, 'name', v)}
+                          placeholder={t('product.soldAsPlaceholder')}
+                          placeholderTextColor={theme.mutedForeground}
+                          style={[styles.input, styles.inputSm, { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }]}
+                        />
+
+                        <Text style={[styles.label, { color: theme.mutedForeground }]}>
+                          {tf('product.priceLabel', unitName)}
+                        </Text>
+                        <TextInput
+                          keyboardType="numeric"
+                          value={unit.price === 0 || unit.price === '' ? '' : String(unit.price)}
+                          onChangeText={(v) => updateSellingUnit(unit.id, 'price', parseFloat(v) || 0)}
+                          placeholder="₦"
+                          placeholderTextColor={theme.mutedForeground}
+                          style={[styles.input, styles.inputSm, { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }]}
+                        />
+
+                        <View
                           style={[
-                            styles.chip,
-                            {
-                              backgroundColor: selected ? theme.primary : theme.surface,
-                              borderColor: theme.border
-                            }
+                            styles.yieldBox,
+                            isLoss
+                              ? { backgroundColor: theme.rose + '1A', borderColor: theme.rose + '4D' }
+                              : { backgroundColor: theme.card, borderColor: theme.border },
                           ]}
                         >
-                          <Text style={[styles.chipText, { color: selected ? '#000' : theme.foreground }]}>
-                            {unit}
+                          <Text style={[styles.yieldLabel, { color: isLoss ? theme.rose : theme.foreground }]}>
+                            {tf('product.yieldLabel', unitName)}
                           </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <TextInput
-                    value={form.purchaseUnit || ''}
-                    onChangeText={(v) => setForm({ ...form, purchaseUnit: v })}
-                    placeholder="e.g. Litres, Bags"
-                    placeholderTextColor={theme.mutedForeground}
-                    style={[
-                      styles.input,
-                      { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground, marginTop: 8 }
-                    ]}
-                  />
-                </View>
-              </View>
+                          <View style={styles.yieldRow}>
+                            <Text style={[styles.yieldText, { color: theme.mutedForeground }]}>{tf('product.yieldPrefix')}</Text>
+                            <TextInput
+                              keyboardType="numeric"
+                              value={y === 0 ? '' : String(y)}
+                              onChangeText={(v) => updateSellingUnit(unit.id, 'yieldFromTotal', parseFloat(v) || 0)}
+                              placeholder={t('product.yieldPlaceholder')}
+                              placeholderTextColor={theme.mutedForeground}
+                              style={[
+                                styles.yieldInput,
+                                { backgroundColor: theme.background, borderColor: theme.border, color: theme.foreground },
+                              ]}
+                            />
+                            <Text style={[styles.yieldText, { color: theme.mutedForeground }]}>{tf('product.yieldTotal', unitName)}</Text>
+                          </View>
+                          <Text style={[styles.hint, { color: theme.mutedForeground, marginTop: 6 }]}>
+                            {tf('product.yieldHint', unitName)}
+                          </Text>
 
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Total Cost (₦)</Text>
-              <TextInput
-                keyboardType="numeric"
-                value={form.purchasePrice === 0 ? '' : String(form.purchasePrice)}
-                onChangeText={(v) => setForm({ ...form, purchasePrice: parseFloat(v) || 0 })}
-                placeholder="0"
-                placeholderTextColor={theme.mutedForeground}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                ]}
-              />
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Date Purchased (YYYY-MM-DD)</Text>
-              <TextInput
-                value={form.datePurchased ? form.datePurchased.slice(0, 10) : ''}
-                onChangeText={(v) => {
-                  const iso = v ? new Date(v).toISOString() : new Date().toISOString();
-                  setForm({ ...form, datePurchased: iso });
-                }}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={theme.mutedForeground}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                ]}
-              />
-              <Pressable
-                onPress={() => setForm({ ...form, datePurchased: new Date().toISOString() })}
-                style={[styles.todayBtn, { borderColor: theme.border }]}
-              >
-                <Text style={[styles.todayBtnText, { color: theme.foreground }]}>Today</Text>
-              </Pressable>
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Supplier Info (optional)</Text>
-              <TextInput
-                value={form.supplierInfo || ''}
-                onChangeText={(v) => setForm({ ...form, supplierInfo: v })}
-                placeholder="Supplier name/contact"
-                placeholderTextColor={theme.mutedForeground}
-                style={[
-                  styles.input,
-                  { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                ]}
-              />
-
-              <Text style={[styles.label, { color: theme.mutedForeground }]}>Notes (optional)</Text>
-              <TextInput
-                value={form.notes || ''}
-                onChangeText={(v) => setForm({ ...form, notes: v })}
-                placeholder="Any notes"
-                placeholderTextColor={theme.mutedForeground}
-                multiline
-                numberOfLines={3}
-                style={[
-                  styles.input,
-                  styles.textArea,
-                  { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }
-                ]}
-              />
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.foreground }]}>Selling Units</Text>
-                <Pressable
-                  onPress={addSellingUnit}
-                  style={[styles.addUnitBtn, { backgroundColor: theme.primary }]}
-                >
-                  <Ionicons name="add" size={16} color="#000" />
-                  <Text style={styles.addUnitBtnText}>Add Unit</Text>
-                </Pressable>
-              </View>
-
-              {(form.sellingUnits || []).map((unit) => {
-                const y = Number(unit.yieldFromTotal) || 0;
-                const priceU = Number(unit.price) || 0;
-                const costPerItem = y > 0 ? purchasePrice / y : 0;
-                const profitPerItem = priceU - costPerItem;
-                const isLoss = y > 0 && priceU > 0 && profitPerItem < 0;
-
-                return (
-                  <View
-                    key={unit.id}
-                    style={[
-                      styles.unitCard,
-                      { backgroundColor: theme.surface, borderColor: theme.border }
-                    ]}
-                  >
-                    <View style={styles.unitHeader}>
-                      <Text style={[styles.unitTitle, { color: theme.foreground }]}>Selling Unit</Text>
-                      <Pressable
-                        onPress={() => removeSellingUnit(unit.id)}
-                        disabled={(form.sellingUnits || []).length <= 1}
-                        style={[
-                          styles.removeBtn,
-                          {
-                            opacity: (form.sellingUnits || []).length <= 1 ? 0.4 : 1,
-                            borderColor: theme.border
-                          }
-                        ]}
-                      >
-                        <Ionicons name="trash-outline" size={16} color={theme.rose} />
-                      </Pressable>
-                    </View>
-
-                    <Text style={[styles.label, { color: theme.mutedForeground }]}>Sold As (e.g. Cup)</Text>
-                    <TextInput
-                      value={unit.name || ''}
-                      onChangeText={(v) => updateSellingUnit(unit.id, 'name', v)}
-                      placeholder="e.g. Cup"
-                      placeholderTextColor={theme.mutedForeground}
-                      style={[
-                        styles.input,
-                        { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }
-                      ]}
-                    />
-
-                    <Text style={[styles.label, { color: theme.mutedForeground }]}>
-                      Selling Price for 1 {unit.name || 'unit'} (₦)
-                    </Text>
-                    <TextInput
-                      keyboardType="numeric"
-                      value={priceU === 0 ? '' : String(priceU)}
-                      onChangeText={(v) => updateSellingUnit(unit.id, 'price', parseFloat(v) || 0)}
-                      placeholder="0"
-                      placeholderTextColor={theme.mutedForeground}
-                      style={[
-                        styles.input,
-                        { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }
-                      ]}
-                    />
-
-                    <Text style={[styles.label, { color: theme.mutedForeground }]}>
-                      Yield From Total (optional — how many {unit.name || 'units'} from bulk)
-                    </Text>
-                    <TextInput
-                      keyboardType="numeric"
-                      value={y === 0 ? '' : String(y)}
-                      onChangeText={(v) => updateSellingUnit(unit.id, 'yieldFromTotal', parseFloat(v) || 0)}
-                      placeholder={`e.g. ${qtyPurchased || 1}`}
-                      placeholderTextColor={theme.mutedForeground}
-                      style={[
-                        styles.input,
-                        { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }
-                      ]}
-                    />
-
-                    {y > 0 && priceU > 0 && purchasePrice > 0 ? (
-                      <View style={styles.hintRow}>
-                        <Text style={[styles.hintText, { color: theme.mutedForeground }]}>
-                          Cost per {unit.name || 'unit'}: {costPerItem.toFixed(2)}
-                        </Text>
-                        <Text style={[styles.hintText, { color: isLoss ? theme.rose : theme.emerald }]}>
-                          {isLoss ? '' : '+'}Profit: {profitPerItem.toFixed(2)}
-                        </Text>
+                          {y > 0 && priceU > 0 && purchasePrice > 0 ? (
+                            <View style={[styles.calcRow, { borderTopColor: theme.border }]}>
+                              <View style={[styles.calcTile, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                                <Text style={[styles.calcLabel, { color: theme.mutedForeground }]}>
+                                  {tf('product.costPer', unitName)}
+                                </Text>
+                                <Text style={[styles.calcValue, { color: theme.foreground }]}>
+                                  {formatNaira(costPerItem)}
+                                </Text>
+                              </View>
+                              <View style={[styles.calcTile, { backgroundColor: theme.background, borderColor: theme.border }]}>
+                                <Text style={[styles.calcLabel, { color: theme.mutedForeground }]}>
+                                  {tf('product.profitPer', unitName)}
+                                </Text>
+                                <Text style={[styles.calcValue, { color: isLoss ? theme.rose : theme.emerald }]}>
+                                  {isLoss ? '' : '+'}
+                                  {formatNaira(profitPerItem)}
+                                </Text>
+                              </View>
+                            </View>
+                          ) : null}
+                        </View>
                       </View>
-                    ) : null}
-                  </View>
-                );
-              })}
-            </View>
-          </ScrollView>
+                    );
+                  })
+                )}
+              </View>
 
-          <View style={[styles.footer, { borderTopColor: theme.border }]}>
-            <Pressable
-              onPress={handleClose}
-              style={[styles.footerBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
-            >
-              <Text style={[styles.footerBtnText, { color: theme.foreground }]}>Cancel</Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSave}
-              style={[styles.footerBtn, styles.footerBtnPrimary, { backgroundColor: theme.primary }]}
-            >
-              <Text style={[styles.footerBtnText, styles.footerBtnPrimaryText]}>Save Item</Text>
-            </Pressable>
+              <View style={{ height: 8 }} />
+            </ScrollView>
+
+            <View style={[styles.footer, { borderTopColor: theme.border }]}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={handleClose}
+                style={[styles.footerBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
+              >
+                <Text style={[styles.footerBtnText, { color: theme.foreground }]}>{t('product.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleSave}
+                style={[styles.footerBtn, styles.footerBtnPrimary, { backgroundColor: theme.primary }]}
+              >
+                <Text style={[styles.footerBtnText, styles.footerBtnPrimaryText]}>
+                  {product && product.name ? t('product.saveEdit') : t('product.saveNew')}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  backdrop: { flex: 1 },
   sheet: {
-    maxHeight: '88%',
+    maxHeight: '90%',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderBottomWidth: 0
+    borderBottomWidth: 0,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
-  header: {
+  header: { marginBottom: 18 },
+  chip: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 2 },
+  headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  errorText: { fontSize: 12, fontWeight: '700', flex: 1 },
+  section: { gap: 8, marginBottom: 24 },
+  sectionHead: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    marginBottom: 4,
   },
-  headerTitle: { fontSize: 18, fontWeight: '800' },
-  closeBtn: { padding: 4 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 20, gap: 16 },
-  errorBox: {
-    flexDirection: 'row',
+  sectionHeadLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  numCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
     alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1
+    justifyContent: 'center',
   },
-  errorText: { fontSize: 12, fontWeight: '700', flex: 1 },
-  section: { gap: 10 },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  sectionTitle: { fontSize: 16, fontWeight: '800' },
-  label: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-    marginTop: 4
-  },
+  numText: { fontSize: 13, fontWeight: '900' },
+  sectionTitle: { fontSize: 14, fontWeight: '900' },
+  label: { fontSize: 11, fontWeight: '800', letterSpacing: 1, marginTop: 6 },
+  hint: { fontSize: 10, fontWeight: '600' },
   input: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 14,
-    fontWeight: '600'
+    fontWeight: '700',
   },
-  textArea: { height: 80, textAlignVertical: 'top' },
-  chipRowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1
-  },
-  chipText: { fontSize: 12, fontWeight: '700' },
-  row: { flexDirection: 'row', gap: 12 },
-  flex1: { flex: 1 },
-  todayBtn: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 6
-  },
-  todayBtnText: { fontSize: 11, fontWeight: '700' },
-  unitCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    padding: 14,
-    gap: 10,
-    marginTop: 10
-  },
-  unitHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between'
-  },
-  unitTitle: { fontSize: 14, fontWeight: '800' },
-  removeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  addUnitBtn: {
+  inputSm: { paddingVertical: 10, fontSize: 13 },
+  addWayBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  addWayBtnText: { color: '#000', fontWeight: '900', fontSize: 12 },
+  emptyWays: {
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyWaysText: { fontSize: 12, fontWeight: '600', textAlign: 'center' },
+  unitCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 4,
+    marginTop: 12,
+  },
+  removeBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  yieldBox: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 10,
+  },
+  yieldLabel: { fontSize: 12, fontWeight: '800', marginBottom: 10 },
+  yieldRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  yieldText: { fontSize: 12, fontWeight: '600' },
+  yieldInput: {
+    width: 84,
+    borderWidth: 1,
+    borderRadius: 12,
     paddingVertical: 8,
-    borderRadius: 10
+    textAlign: 'center',
+    fontWeight: '900',
+    fontSize: 14,
   },
-  addUnitBtnText: { color: '#000', fontWeight: '800', fontSize: 12 },
-  hintRow: {
+  calcRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: 8
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
   },
-  hintText: { fontSize: 11, fontWeight: '700' },
+  calcTile: {
+    flex: 1,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 2,
+  },
+  calcLabel: { fontSize: 11, fontWeight: '700' },
+  calcValue: { fontSize: 14, fontWeight: '900' },
   footer: {
     flexDirection: 'row',
-    gap: 10,
-    padding: 16,
-    borderTopWidth: 1
+    gap: 12,
+    paddingVertical: 16,
+    borderTopWidth: 1,
   },
   footerBtn: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 14,
+    borderRadius: 999,
     borderWidth: 1,
-    alignItems: 'center'
+    alignItems: 'center',
   },
   footerBtnPrimary: { borderWidth: 0 },
-  footerBtnText: { fontWeight: '800' },
-  footerBtnPrimaryText: { color: '#000' }
+  footerBtnText: { fontWeight: '800', fontSize: 14 },
+  footerBtnPrimaryText: { color: '#000' },
 });

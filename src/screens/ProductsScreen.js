@@ -14,19 +14,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { stockOf, productFinancials } from '../utils/finance';
-import { formatNaira, formatNairaRound, formatQty } from '../utils/format';
+import { formatNairaRound, formatNumber, formatQty } from '../utils/format';
+import { useAppT, useAppTF } from '../i18n';
 import ProductModal from '../components/ProductModal';
 
-const SORT_OPTIONS = [
-  { id: 'name', label: 'Name' },
-  { id: 'price', label: 'Price' },
-  { id: 'stock', label: 'Stock' },
-  { id: 'views', label: 'Views' }
-];
-
-const ORDER_OPTIONS = [
-  { id: 'asc', label: 'Asc' },
-  { id: 'desc', label: 'Desc' }
+const ARRANGE_OPTIONS = [
+  { id: 'name-asc', sortBy: 'name', order: 'asc', labelKey: 'stock.arrangeNameAZ' },
+  { id: 'name-desc', sortBy: 'name', order: 'desc', labelKey: 'stock.arrangeNameZA' },
+  { id: 'price-asc', sortBy: 'price', order: 'asc', labelKey: 'stock.arrangePriceLow' },
+  { id: 'price-desc', sortBy: 'price', order: 'desc', labelKey: 'stock.arrangePriceHigh' },
+  { id: 'stock-asc', sortBy: 'stock', order: 'asc', labelKey: 'stock.arrangeStockLow' }
 ];
 
 export default function ProductsScreen() {
@@ -40,6 +37,8 @@ export default function ProductsScreen() {
   } = ctx;
 
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [productSortBy, setProductSortBy] = useState('name');
@@ -47,6 +46,7 @@ export default function ProductsScreen() {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [arrangeOpen, setArrangeOpen] = useState(false);
 
   const handleAddProduct = () => {
     const newProduct = {
@@ -80,11 +80,11 @@ export default function ProductsScreen() {
 
   const handleDelete = (id) => {
     Alert.alert(
-      'Delete Product',
-      'This will be permanently removed and synced across all your devices.',
+      t('table.delete'),
+      undefined,
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: () => deleteProduct(id) }
+        { text: t('action.cancel'), style: 'cancel' },
+        { text: t('action.delete'), style: 'destructive', onPress: () => deleteProduct(id) }
       ],
       { cancelable: true }
     );
@@ -132,72 +132,55 @@ export default function ProductsScreen() {
       return 0;
     });
 
-  const renderSortChips = () => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-    >
-      {SORT_OPTIONS.map((opt) => {
-        const selected = productSortBy === opt.id;
-        return (
-          <Pressable
-            key={opt.id}
-            onPress={() => setProductSortBy(opt.id)}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: selected ? theme.primary : theme.surface,
-                borderColor: theme.border
-              }
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                { color: selected ? '#000' : theme.foreground }
-              ]}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
-  );
+  const currentArrange =
+    ARRANGE_OPTIONS.find((o) => o.id === `${productSortBy}-${productSortOrder}`) || ARRANGE_OPTIONS[0];
 
-  const renderOrderChips = () => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.chipRow}
-    >
-      {ORDER_OPTIONS.map((opt) => {
-        const selected = productSortOrder === opt.id;
-        return (
-          <Pressable
-            key={opt.id}
-            onPress={() => setProductSortOrder(opt.id)}
-            style={[
-              styles.chip,
-              {
-                backgroundColor: selected ? theme.primary : theme.surface,
-                borderColor: theme.border
-              }
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                { color: selected ? '#000' : theme.foreground }
-              ]}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+  const renderArrangeControl = () => (
+    <View style={styles.arrangeWrap}>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => setArrangeOpen((v) => !v)}
+        style={[styles.dropdown, { backgroundColor: theme.card, borderColor: theme.border }]}
+      >
+        <Ionicons name="cube-outline" size={16} color={theme.gold} />
+        <Text style={[styles.dropdownText, { color: theme.foreground }]} numberOfLines={1}>
+          {t(currentArrange.labelKey)}
+        </Text>
+        <Ionicons
+          name={arrangeOpen ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={theme.mutedForeground}
+        />
+      </TouchableOpacity>
+
+      {arrangeOpen && (
+        <View style={[styles.dropdownMenu, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          {ARRANGE_OPTIONS.map((opt) => {
+            const selected = opt.id === currentArrange.id;
+            return (
+              <TouchableOpacity
+                key={opt.id}
+                activeOpacity={0.85}
+                onPress={() => {
+                  setProductSortBy(opt.sortBy);
+                  setProductSortOrder(opt.order);
+                  setArrangeOpen(false);
+                }}
+                style={[styles.dropdownItem, selected && { backgroundColor: theme.primary }]}
+              >
+                <Text
+                  style={[styles.dropdownItemText, { color: selected ? '#000' : theme.foreground }]}
+                  numberOfLines={1}
+                >
+                  {t(opt.labelKey)}
+                </Text>
+                {selected && <Ionicons name="checkmark" size={16} color="#000" />}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
+    </View>
   );
 
   const renderProductRow = ({ item }) => {
@@ -212,45 +195,21 @@ export default function ProductsScreen() {
     const goodsCost = pf.goodsCost || item.purchasePrice || 0;
     const profit = pf.profit || (moneyMade - goodsCost);
 
-    let statusPill = null;
-    if (item.status === 'Active') {
-      statusPill = (
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: `${theme.emerald}15`, borderColor: `${theme.emerald}40` }
-          ]}
-        >
-          <Text style={[styles.statusText, { color: theme.emerald }]}>Active</Text>
-        </View>
-      );
-    } else if (item.status === 'Draft') {
-      statusPill = (
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: `${theme.amber}15`, borderColor: `${theme.amber}40` }
-          ]}
-        >
-          <Text style={[styles.statusText, { color: theme.amber }]}>Draft</Text>
-        </View>
-      );
-    } else if (item.status === 'Archived') {
-      statusPill = (
-        <View
-          style={[
-            styles.statusPill,
-            { backgroundColor: `${theme.muted}15`, borderColor: theme.border }
-          ]}
-        >
-          <Text style={[styles.statusText, { color: theme.mutedForeground }]}>Archived</Text>
-        </View>
-      );
+    const paidBack = moneyMade >= goodsCost;
+    let stockStatus = null;
+    if (remainingPercentage <= 0) {
+      stockStatus = paidBack
+        ? { label: t('table.finished'), color: theme.rose }
+        : { label: t('table.payingBack'), color: theme.gold };
+    } else if (remainingPercentage <= 10) {
+      stockStatus = { label: t('table.restockSoon'), color: theme.rose };
+    } else if (remainingPercentage <= 25) {
+      stockStatus = { label: t('table.runningLow'), color: theme.gold };
     }
 
     let profitColor = theme.foreground;
     if (moneyMade > 0) {
-      profitColor = profit > 0 ? theme.emerald : theme.rose;
+      profitColor = profit > 0 ? theme.sky : theme.rose;
     } else {
       profitColor = theme.foreground;
     }
@@ -275,7 +234,6 @@ export default function ProductsScreen() {
             >
               {item.name}
             </Text>
-            {statusPill}
           </View>
           <View style={styles.actionGroup}>
             <Pressable
@@ -296,17 +254,14 @@ export default function ProductsScreen() {
           </View>
         </View>
 
-        <Text style={[styles.rowSub, { color: theme.mutedForeground }]}>
-          {item.category || 'General'}
-        </Text>
         <Text style={[styles.rowMeta, { color: theme.mutedForeground }]}>
-          Bought {formatQty(item.quantityPurchased || 0)} {item.purchaseUnit || 'Units'} for {formatNaira(item.purchasePrice || 0)}
+          {tf('table.bought', formatQty(item.quantityPurchased || 0), item.purchaseUnit || 'Units', formatNumber(item.purchasePrice || 0))}
         </Text>
 
         <View style={styles.stockSection}>
           <View style={styles.stockHeader}>
-            <View>
-              <Text style={[styles.microLabel, { color: theme.mutedForeground }]}>WHAT I HAVE LEFT</Text>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={[styles.microLabel, { color: theme.mutedForeground }]}>{t('table.whatLeft')}</Text>
               <Text style={[styles.qtyText, { color: theme.foreground }]}>
                 {formatQty(qtyRemaining)}{' '}
                 <Text style={[styles.qtyUnit, { color: theme.mutedForeground }]}>
@@ -314,6 +269,18 @@ export default function ProductsScreen() {
                 </Text>
               </Text>
             </View>
+            {stockStatus && (
+              <View
+                style={[
+                  styles.statusTag,
+                  { backgroundColor: `${stockStatus.color}1A`, borderColor: `${stockStatus.color}40` }
+                ]}
+              >
+                <Text style={[styles.statusTagText, { color: stockStatus.color }]}>
+                  {stockStatus.label}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View
@@ -340,7 +307,7 @@ export default function ProductsScreen() {
 
           <View style={styles.stockFooter}>
             <Text style={[styles.stockInfo, { color: theme.mutedForeground }]}>
-              Sold: {formatQty(qtySold)} {item.purchaseUnit || 'Units'}
+              {tf('table.sold', formatQty(qtySold), item.purchaseUnit || 'Units')}
             </Text>
             <View
               style={[
@@ -349,7 +316,7 @@ export default function ProductsScreen() {
               ]}
             >
               <Text style={[styles.valueText, { color: theme.foreground }]}>
-                Value: {formatNaira(remainingValue)}
+                {tf('table.value', formatNumber(remainingValue))}
               </Text>
             </View>
           </View>
@@ -359,7 +326,7 @@ export default function ProductsScreen() {
 
         <View style={styles.finRow}>
           <View style={[styles.finTile, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>TOTAL SALES</Text>
+            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>{t('table.totalSales')}</Text>
             <Text
               style={[styles.finValue, { color: theme.foreground }]}
               numberOfLines={1}
@@ -368,7 +335,7 @@ export default function ProductsScreen() {
             </Text>
           </View>
           <View style={[styles.finTile, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>GOODS COST</Text>
+            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>{t('table.goodsCost')}</Text>
             <Text
               style={[styles.finValue, { color: theme.foreground }]}
               numberOfLines={1}
@@ -381,13 +348,13 @@ export default function ProductsScreen() {
               styles.finTile,
               {
                 backgroundColor:
-                  moneyMade === 0 ? theme.surface : profit > 0 ? `${theme.emerald}10` : `${theme.rose}10`,
+                  moneyMade === 0 ? theme.surface : profit > 0 ? `${theme.sky}10` : `${theme.rose}10`,
                 borderColor:
-                  moneyMade === 0 ? theme.border : profit > 0 ? `${theme.emerald}40` : `${theme.rose}40`
+                  moneyMade === 0 ? theme.border : profit > 0 ? `${theme.sky}40` : `${theme.rose}40`
               }
             ]}
           >
-            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>GROSS PROFIT</Text>
+            <Text style={[styles.finLabel, { color: theme.mutedForeground }]}>{t('analysis.grossProfit')}</Text>
             <Text
               style={[
                 styles.finValue,
@@ -404,24 +371,29 @@ export default function ProductsScreen() {
   };
 
   const itemCount = products.length;
-  const hasProducts = itemCount > 0;
-  const hasFiltered = filteredAndSortedProducts.length > 0;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
-        <View>
-          <Text style={[styles.headerTitle, { color: theme.foreground }]}>My Stock</Text>
-          <Text style={[styles.headerSub, { color: theme.mutedForeground }]}>
-            {itemCount} {itemCount === 1 ? 'item' : 'items'}
-          </Text>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={[styles.headerTitle, { color: theme.foreground }]}>{t('title.products')}</Text>
+          <View style={styles.headerSubRow}>
+            <Text style={[styles.headerSub, { color: theme.mutedForeground }]} numberOfLines={1}>
+              {t('products.subtitle')}
+            </Text>
+            <View style={[styles.countPill, { backgroundColor: `${theme.gold}1A`, borderColor: `${theme.gold}40` }]}>
+              <Text style={[styles.countPillText, { color: theme.gold }]}>
+                {itemCount} {t(itemCount === 1 ? 'home.itemInStock' : 'home.itemsInStock')}
+              </Text>
+            </View>
+          </View>
         </View>
         <Pressable
           onPress={handleAddProduct}
           style={[styles.addBtn, { backgroundColor: theme.primary }]}
         >
           <Ionicons name="add" size={18} color="#000" />
-          <Text style={styles.addBtnText}>Add</Text>
+          <Text style={styles.addBtnText}>{t('products.add')}</Text>
         </Pressable>
       </View>
 
@@ -430,7 +402,7 @@ export default function ProductsScreen() {
         <TextInput
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholder="Search my stock..."
+          placeholder={t('search.placeholder')}
           placeholderTextColor={theme.mutedForeground}
           style={[
             styles.searchInput,
@@ -444,10 +416,8 @@ export default function ProductsScreen() {
       </View>
 
       <View style={styles.controls}>
-        <Text style={[styles.sectionLabel, { color: theme.mutedForeground }]}>Sort by</Text>
-        {renderSortChips()}
-        <Text style={[styles.sectionLabel, { color: theme.mutedForeground }]}>Order</Text>
-        {renderOrderChips()}
+        <Text style={[styles.sectionLabel, { color: theme.mutedForeground }]}>{t('stock.arrangeBy')}</Text>
+        {renderArrangeControl()}
       </View>
 
       <FlatList
@@ -458,14 +428,15 @@ export default function ProductsScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={[styles.emptyCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.emptyTitle, { color: theme.foreground }]}>
-              {hasProducts ? 'No results' : 'No products yet'}
-            </Text>
-            <Text style={[styles.emptyText, { color: theme.mutedForeground }]}>
-              {hasProducts
-                ? 'Try adjusting your search or sort.'
-                : 'Add a product to start tracking your stock and sales.'}
-            </Text>
+            <View style={[styles.emptyIcon, { backgroundColor: `${theme.gold}1A`, borderColor: `${theme.gold}40` }]}>
+              <Ionicons name="cube" size={30} color={theme.gold} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.foreground }]}>{t('stock.addFirstTitle')}</Text>
+            <Text style={[styles.emptyText, { color: theme.mutedForeground }]}>{t('stock.addFirstDesc')}</Text>
+            <Pressable onPress={handleAddProduct} style={[styles.emptyBtn, { backgroundColor: theme.primary }]}>
+              <Ionicons name="add" size={16} color="#000" />
+              <Text style={styles.emptyBtnText}>{t('stock.addFirstBtn')}</Text>
+            </Pressable>
           </View>
         }
       />
@@ -498,6 +469,20 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: 22, fontWeight: '800' },
   headerSub: { fontSize: 12, marginTop: 2, fontWeight: '600' },
+  headerSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2
+  },
+  countPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1
+  },
+  countPillText: { fontSize: 11, fontWeight: '800' },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -507,6 +492,43 @@ const styles = StyleSheet.create({
     borderRadius: 12
   },
   addBtnText: { color: '#000', fontWeight: '800', fontSize: 14 },
+  arrangeWrap: { position: 'relative', zIndex: 20 },
+  dropdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  dropdownText: { flex: 1, fontWeight: '700', fontSize: 14 },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    marginTop: 6,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 6,
+    zIndex: 30,
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 }
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 10
+  },
+  dropdownItemText: { flex: 1, fontSize: 14, fontWeight: '700' },
   searchWrap: {
     marginHorizontal: 16,
     marginBottom: 12,
@@ -566,6 +588,14 @@ const styles = StyleSheet.create({
     borderWidth: 1
   },
   statusText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  statusTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginLeft: 8
+  },
+  statusTagText: { fontSize: 11, fontWeight: '800' },
   actionGroup: { flexDirection: 'row', gap: 6 },
   iconBtn: {
     width: 32,
@@ -625,12 +655,30 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   finValue: { fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginTop: 8
+  },
+  emptyBtnText: { color: '#000', fontWeight: '800', fontSize: 14 },
   emptyCard: {
     borderWidth: 1,
     borderRadius: 16,
     padding: 24,
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
     marginTop: 20
   },
   emptyTitle: { fontSize: 16, fontWeight: '800' },

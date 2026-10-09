@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
+import { useAppT } from '../i18n';
 
 const CATEGORIES = ['Transport', 'Electricity', 'Rent', 'Packaging', 'Staff', 'Delivery', 'Other'];
 
@@ -26,6 +27,7 @@ const isValidDateStr = (s) =>
 export const ExpenseModal = ({ visible, expense, onClose }) => {
   const { isDarkMode, saveExpense } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
 
   const [category, setCategory] = useState('Rent');
   const [amount, setAmount] = useState('');
@@ -74,33 +76,6 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
 
   const micro = { fontSize: 11, fontWeight: '800', color: theme.mutedForeground, letterSpacing: 1 };
 
-  const dateChip = (label, value) => {
-    const active = date === value;
-    return (
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => setDate(value)}
-        style={[
-          styles.dateChip,
-          {
-            backgroundColor: active ? theme.primary : theme.surface,
-            borderColor: active ? theme.primary : theme.border,
-          },
-        ]}
-      >
-        <Text
-          style={{
-            fontSize: 11,
-            fontWeight: '800',
-            color: active ? '#000' : theme.mutedForeground,
-          }}
-        >
-          {label}
-        </Text>
-      </TouchableOpacity>
-    );
-  };
-
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
@@ -119,13 +94,13 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
                       marginBottom: 4,
                     }}
                   >
-                    {expense ? 'UPDATE' : 'NEW EXPENSE'}
+                    {expense ? t('expense.update') : t('expense.newTitle')}
                   </Text>
                   <Text style={{ color: theme.foreground, fontSize: 20, fontWeight: '900', letterSpacing: -0.5 }}>
-                    {expense ? 'Edit Expense' : 'Record Money Spent'}
+                    {expense ? t('expense.edit') : t('expense.newTitle')}
                   </Text>
                   <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 4 }}>
-                    Separate from buying goods (transport, rent, fuel)
+                    {t('expense.separate')}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -138,7 +113,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
               </View>
 
               <View style={{ marginTop: 20 }}>
-                <Text style={[micro, { marginBottom: 10 }]}>CATEGORY</Text>
+                <Text style={[micro, { marginBottom: 10 }]}>{t('expense.category')}</Text>
                 <View style={styles.chipGrid}>
                   {CATEGORIES.map((c) => {
                     const active = category === c;
@@ -173,7 +148,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
               </View>
 
               <View style={{ marginTop: 20 }}>
-                <Text style={[micro, { marginBottom: 8 }]}>HOW MUCH DID YOU SPEND?</Text>
+                <Text style={[micro, { marginBottom: 8 }]}>{t('expense.howMuch')}</Text>
                 <View
                   style={[
                     styles.inputRow,
@@ -193,11 +168,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
               </View>
 
               <View style={{ marginTop: 20 }}>
-                <Text style={[micro, { marginBottom: 8 }]}>DATE</Text>
-                <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
-                  {dateChip('Today', toLocalDateStr(new Date()))}
-                  {dateChip('Yesterday', toLocalDateStr(new Date(Date.now() - 86400000)))}
-                </View>
+                <Text style={[micro, { marginBottom: 8 }]}>{t('expense.date')}</Text>
                 <TextInput
                   style={[
                     styles.input,
@@ -212,7 +183,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
               </View>
 
               <View style={{ marginTop: 20 }}>
-                <Text style={[micro, { marginBottom: 8 }]}>NOTE / REASON (OPTIONAL)</Text>
+                <Text style={[micro, { marginBottom: 8 }]}>{t('expense.note')}</Text>
                 <TextInput
                   style={[
                     styles.input,
@@ -220,7 +191,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
                   ]}
                   value={description}
                   onChangeText={setDescription}
-                  placeholder="e.g. Paid okada for warehouse run"
+                  placeholder={t('expense.notePlaceholder')}
                   placeholderTextColor={theme.mutedForeground}
                 />
               </View>
@@ -236,7 +207,7 @@ export const ExpenseModal = ({ visible, expense, onClose }) => {
               >
                 <Ionicons name="checkmark" size={18} color="#000" />
                 <Text style={{ color: '#000', fontWeight: '900', fontSize: 15, marginLeft: 8 }}>
-                  {expense ? 'Update Expense' : 'Save Expense'}
+                  {expense ? t('expense.updateExpense') : t('expense.save')}
                 </Text>
               </TouchableOpacity>
 

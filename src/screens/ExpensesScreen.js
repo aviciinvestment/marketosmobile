@@ -5,11 +5,12 @@ import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { formatNairaRound } from '../utils/format';
 import { filterByPeriod } from '../utils/finance';
+import { useAppT } from '../i18n';
 import { ExpenseList } from '../components/ExpenseList';
 import { ExpenseModal } from '../components/ExpenseModal';
 
 const PERIODS = [
-  { key: 'today', label: 'Today' },
+  { key: 'today', labelKey: 'period.today' },
   { key: '7d', label: '7 Days' },
   { key: '30d', label: '30 Days' },
   { key: 'all', label: 'All' },
@@ -18,11 +19,15 @@ const PERIODS = [
 const dayStr = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-const periodLabel = (key) => (PERIODS.find((p) => p.key === key) || PERIODS[0]).label;
+const periodLabel = (key, t) => {
+  const p = PERIODS.find((x) => x.key === key) || PERIODS[0];
+  return p.labelKey ? t(p.labelKey) : p.label;
+};
 
 export default function ExpensesScreen() {
   const { isDarkMode, expenses } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
 
   const [period, setPeriod] = useState('today');
   const [modalOpen, setModalOpen] = useState(false);
@@ -56,10 +61,10 @@ export default function ExpensesScreen() {
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Text style={{ fontSize: 24, fontWeight: '900', color: theme.foreground, letterSpacing: -0.6 }}>
-          Business Expenses
+          {t('expense.title')}
         </Text>
         <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 4 }}>
-          Track transportation, power, feeding, and operational costs
+          {t('expense.subtitle')}
         </Text>
 
         <View style={styles.chipRow}>
@@ -85,7 +90,7 @@ export default function ExpensesScreen() {
                     color: active ? '#000' : theme.mutedForeground,
                   }}
                 >
-                  {p.label}
+                  {p.labelKey ? t(p.labelKey) : p.label}
                 </Text>
               </TouchableOpacity>
             );
@@ -106,7 +111,7 @@ export default function ExpensesScreen() {
               }}
             >
               <Text style={{ fontSize: 10, fontWeight: '900', color: theme.red, letterSpacing: 1 }}>
-                {periodLabel(period).toUpperCase()}
+                {periodLabel(period, t).toUpperCase()}
               </Text>
             </View>
           </View>

@@ -4,8 +4,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
-import { formatNaira, formatRelative } from '../utils/format';
+import { formatNaira, formatNumber, formatRelative } from '../utils/format';
 import { stockOf, saleRevenue } from '../utils/finance';
+import { useAppT, useAppTF } from '../i18n';
 import { SaleModal } from '../components/SaleModal';
 import { EditSaleModal } from '../components/EditSaleModal';
 import { ExpenseList } from '../components/ExpenseList';
@@ -16,6 +17,8 @@ const saleTime = (s) => Number(s.updatedAt) || (s.timestamp ? new Date(s.timesta
 export default function HomeScreen({ navigation }) {
   const { isDarkMode, products, sales, expenses, deleteSale, deviceId } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const [saleProduct, setSaleProduct] = useState(null);
   const [editingSale, setEditingSale] = useState(null);
@@ -29,11 +32,11 @@ export default function HomeScreen({ navigation }) {
 
   const confirmDeleteSale = (sale) => {
     Alert.alert(
-      'Delete Sale Record',
-      `Are you sure you want to permanently delete this sale of ${sale.productName || 'Product'} (+${formatNaira(saleRevenue(sale))})? It will be removed across all devices.`,
+      t('edit.deleteTitle'),
+      tf('confirm.deleteSaleDesc', sale.productName || 'Product', formatNumber(saleRevenue(sale))),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, Delete Sale', style: 'destructive', onPress: () => deleteSale(sale.id) },
+        { text: t('action.cancel'), style: 'cancel' },
+        { text: t('confirm.yesDeleteSale'), style: 'destructive', onPress: () => deleteSale(sale.id) },
       ],
       { cancelable: true }
     );
@@ -42,9 +45,19 @@ export default function HomeScreen({ navigation }) {
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Friendly Greeting so the page is easy to understand at a glance */}
+        <View style={{ marginBottom: 16 }}>
+          <Text style={{ fontSize: 24, fontWeight: '900', color: theme.foreground, letterSpacing: -0.5 }}>
+            {t('title.home')}
+          </Text>
+          <Text style={{ fontSize: 14, color: theme.mutedForeground, marginTop: 4, lineHeight: 20 }}>
+            {t('home.greeting')}
+          </Text>
+        </View>
+
         {/* Quick Sell Register */}
         <LinearGradient
-          colors={['#FFE066', '#F5C518', '#EAB308']}
+          colors={['#FDE68A', '#FCD34D', '#FBBF24']}
           start={{ x: 0, y: 0 }}
           end={{ x: 0, y: 1 }}
           style={[styles.card, {
@@ -71,7 +84,7 @@ export default function HomeScreen({ navigation }) {
                   <Ionicons name="flash" size={17} color="#FFD54A" />
                 </View>
                 <Text style={{ fontSize: 18, fontWeight: '900', color: '#09090B', letterSpacing: -0.4 }}>
-                  Quick Sell
+                  {t('home.quickSell')}
                 </Text>
                 <View
                   style={{
@@ -81,11 +94,11 @@ export default function HomeScreen({ navigation }) {
                     borderRadius: 999,
                   }}
                 >
-                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD54A' }}>Tap to Record</Text>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: '#FFD54A' }}>{t('home.tapToRecord')}</Text>
                 </View>
               </View>
               <Text style={{ fontSize: 12, color: 'rgba(9, 9, 11, 0.72)', marginTop: 6 }}>
-                Tap an item to record a customer sale
+                {t('home.quickSellSubtitle')}
               </Text>
             </View>
             {products.length > 0 && (
@@ -99,7 +112,7 @@ export default function HomeScreen({ navigation }) {
                 }}
               >
                 <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFD54A' }}>
-                  {products.length} in stock
+                  {products.length} {products.length === 1 ? t('home.itemInStock') : t('home.itemsInStock')}
                 </Text>
               </View>
             )}
@@ -109,17 +122,17 @@ export default function HomeScreen({ navigation }) {
             <View style={[styles.empty, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Ionicons name="cube-outline" size={30} color={theme.mutedForeground} />
               <Text style={{ fontSize: 14, fontWeight: '800', color: theme.foreground, marginTop: 10 }}>
-                No stock added yet
+                {t('home.noStock')}
               </Text>
               <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 4 }}>
-                Go to My Stock to add items first.
+                {t('home.goToStock')}
               </Text>
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={() => navigation && navigation.navigate('Products')}
                 style={[styles.goldBtn, { backgroundColor: theme.primary, marginTop: 14 }]}
               >
-                <Text style={{ fontSize: 12, fontWeight: '900', color: '#000' }}>Go to My Stock</Text>
+                <Text style={{ fontSize: 12, fontWeight: '900', color: '#000' }}>{t('home.goToStockBtn')}</Text>
               </TouchableOpacity>
             </View>
           ) : (
@@ -186,10 +199,10 @@ export default function HomeScreen({ navigation }) {
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 16, fontWeight: '900', color: theme.foreground, letterSpacing: -0.3 }}>
-                Recent Quick Sells
+                {t('home.recentQuickSells')}
               </Text>
               <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 3 }}>
-                Edit or delete any sale record mistakenly inputted
+                {t('home.recentQuickSellsSub')}
               </Text>
             </View>
             {sales.length > 0 && (
@@ -214,7 +227,7 @@ export default function HomeScreen({ navigation }) {
           {recentSales.length === 0 ? (
             <View style={[styles.empty, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={{ fontSize: 12, color: theme.mutedForeground, textAlign: 'center' }}>
-                No sales recorded yet. Tap any item above to record a customer sale.
+                {t('home.noSalesYet')}
               </Text>
             </View>
           ) : (
@@ -233,7 +246,7 @@ export default function HomeScreen({ navigation }) {
                         style={{ color: theme.foreground, fontWeight: '800', fontSize: 13, flexShrink: 1 }}
                         numberOfLines={1}
                       >
-                        Sold {sale.productName || 'Product'}
+                        {tf('sale.soldName', sale.productName || 'Product')}
                       </Text>
                       <View
                         style={{
@@ -266,7 +279,7 @@ export default function HomeScreen({ navigation }) {
                               color: sale.updatedByDevice === deviceId ? theme.emerald : theme.sky,
                             }}
                           >
-                            {sale.updatedByDevice === deviceId ? 'This device' : 'Another device'}
+                            {sale.updatedByDevice === deviceId ? t('sale.thisDevice') : t('sale.anotherDevice')}
                           </Text>
                         </View>
                       ) : null}
@@ -307,7 +320,7 @@ export default function HomeScreen({ navigation }) {
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
             <Text style={{ fontSize: 16, fontWeight: '900', color: theme.foreground, letterSpacing: -0.3 }}>
-              Business Expenses
+              {t('expense.title')}
             </Text>
             {navigation ? (
               <TouchableOpacity

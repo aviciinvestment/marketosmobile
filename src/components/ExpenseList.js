@@ -3,11 +3,14 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
-import { formatNaira, formatNairaSigned, formatDateShort } from '../utils/format';
+import { formatNairaSigned, formatDateShort, formatNumber } from '../utils/format';
+import { useAppT, useAppTF } from '../i18n';
 
 export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
   const { isDarkMode, expenses, deleteExpense, deviceId } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
 
   const timeOf = (e) => (e.date ? new Date(e.date).getTime() : 0) || Number(e.updatedAt) || 0;
   const sorted = [...(expenses || [])].sort((a, b) => timeOf(b) - timeOf(a));
@@ -15,11 +18,11 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
 
   const confirmDelete = (expense) => {
     Alert.alert(
-      'Delete Business Expense?',
-      `Are you sure you want to delete this expense of ${formatNaira(expense.amount || 0)} (${expense.category || 'Expense'})? This will be permanently removed and synced across all your devices.`,
+      t('expense.deleteTitle'),
+      tf('expense.deleteDesc', formatNumber(expense.amount || 0), expense.category || 'Expense'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Yes, Delete Expense', style: 'destructive', onPress: () => deleteExpense(expense.id) },
+        { text: t('action.cancel'), style: 'cancel' },
+        { text: t('expense.yesDelete'), style: 'destructive', onPress: () => deleteExpense(expense.id) },
       ],
       { cancelable: true }
     );
@@ -32,7 +35,7 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
       style={[styles.addBtn, { backgroundColor: theme.primary }]}
     >
       <Ionicons name="add" size={15} color="#000" />
-      <Text style={{ fontSize: 12, fontWeight: '900', color: '#000', marginLeft: 4 }}>Record Money Spent</Text>
+      <Text style={{ fontSize: 12, fontWeight: '900', color: '#000', marginLeft: 4 }}>{t('expense.record')}</Text>
     </TouchableOpacity>
   ) : null;
 
@@ -62,7 +65,7 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
           borderRadius: 6,
         }}
       >
-        <Text style={{ fontSize: 9, fontWeight: '800', color }}>{mine ? 'This device' : 'Another device'}</Text>
+        <Text style={{ fontSize: 9, fontWeight: '800', color }}>{mine ? t('sale.thisDevice') : t('sale.anotherDevice')}</Text>
       </View>
     );
   };
@@ -88,10 +91,10 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
         <View style={[styles.empty, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Ionicons name="trending-down" size={26} color={theme.mutedForeground} />
           <Text style={{ fontSize: 13, fontWeight: '800', color: theme.foreground, marginTop: 8 }}>
-            No business expenses recorded yet.
+            {t('expense.emptyTitle')}
           </Text>
           <Text style={{ fontSize: 11, color: theme.mutedForeground, textAlign: 'center', marginTop: 4 }}>
-            Log expenses like transportation, feeding, generator fuel, or shop rent.
+            {t('expense.emptyDesc')}
           </Text>
           {onAddExpense ? (
             <TouchableOpacity
@@ -102,7 +105,7 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
                 { borderColor: theme.primary + '66', backgroundColor: theme.primary + '14', marginTop: 12 },
               ]}
             >
-              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.primary }}>+ Record Expense</Text>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: theme.primary }}>+ {t('expense.record')}</Text>
             </TouchableOpacity>
           ) : null}
         </View>

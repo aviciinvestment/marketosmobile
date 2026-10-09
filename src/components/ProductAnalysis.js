@@ -5,10 +5,13 @@ import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
 import { formatNairaRound, formatNairaSigned, formatQty, formatDate } from '../utils/format';
 import { productFinancials, stockOf, filterByPeriod, saleRevenue } from '../utils/finance';
+import { useAppT, useAppTF } from '../i18n';
 
 export default function ProductAnalysis({ period = 'today', customStart = '', customEnd = '' }) {
   const { isDarkMode, products, sales } = useSyncContext();
   const theme = getTheme(isDarkMode);
+  const t = useAppT();
+  const tf = useAppTF();
   const [expandedId, setExpandedId] = useState(null);
 
   const fSales = useMemo(
@@ -47,20 +50,20 @@ export default function ProductAnalysis({ period = 'today', customStart = '', cu
     const paidBack = row.moneyMade >= row.goodsCost;
     if (remaining <= 0) {
       return paidBack
-        ? { label: 'Finished', color: theme.rose }
-        : { label: 'Paying back', color: theme.amber };
+        ? { label: t('table.finished'), color: theme.rose }
+        : { label: t('table.payingBack'), color: theme.amber };
     }
-    if (remaining <= 10) return { label: 'Restock soon', color: theme.rose };
-    if (remaining <= 25) return { label: 'Running low', color: theme.amber };
+    if (remaining <= 10) return { label: t('table.restockSoon'), color: theme.rose };
+    if (remaining <= 25) return { label: t('table.runningLow'), color: theme.amber };
     return null;
   };
 
   if (!products || products.length === 0) {
     return (
       <View style={[styles.card, styles.emptyCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-        <Text style={[styles.emptyTitle, { color: theme.foreground }]}>Business Analysis</Text>
+        <Text style={[styles.emptyTitle, { color: theme.foreground }]}>{t('analysis.title')}</Text>
         <Text style={[styles.emptyText, { color: theme.mutedForeground }]}>
-          Add a product and start selling to see its analysis here.
+          {t('analysis.empty')}
         </Text>
       </View>
     );
@@ -73,8 +76,8 @@ export default function ProductAnalysis({ period = 'today', customStart = '', cu
           <Ionicons name="pie-chart-outline" size={16} color={theme.gold} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.headerTitle, { color: theme.foreground }]}>Product Financials</Text>
-          <Text style={[styles.headerSub, { color: theme.mutedForeground }]}>Performance breakdown per item</Text>
+          <Text style={[styles.headerTitle, { color: theme.foreground }]}>{t('analysis.title')}</Text>
+          <Text style={[styles.headerSub, { color: theme.mutedForeground }]}>{t('analysis.subtitle')}</Text>
         </View>
       </View>
 
@@ -168,7 +171,7 @@ export default function ProductAnalysis({ period = 'today', customStart = '', cu
             {expanded && (
               <View style={[styles.recentWrap, { borderTopColor: theme.border }]}>
                 <Text style={[styles.recentTitle, { color: theme.foreground }]}>
-                  Recent Sales of {row.name}
+                  {tf('analysis.recentSales', row.name)}
                 </Text>
                 {row.recentSales.length === 0 ? (
                   <Text style={[styles.recentEmpty, { color: theme.mutedForeground }]}>
@@ -192,7 +195,7 @@ export default function ProductAnalysis({ period = 'today', customStart = '', cu
                             : ''}
                         </Text>
                         <Text style={[styles.saleDate, { color: theme.mutedForeground }]}>
-                          {s.timestamp ? formatDate(s.timestamp) : 'Recently'}
+                          {s.timestamp ? formatDate(s.timestamp) : t('sale.recently')}
                         </Text>
                       </View>
                       <Text style={[styles.saleRevenue, { color: theme.emerald }]}>

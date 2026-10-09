@@ -16,6 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import BrandLogo from '../components/BrandLogo';
 import LegalModal from '../components/LegalModal';
 import SupportWidget from '../components/SupportWidget';
+import VoiceGuideButton from '../components/VoiceGuideButton';
+import { setAppLang } from '../i18n';
 
 // ---------------------------------------------------------------------------
 // i18n dictionary — verbatim port of web/src/components/LandingPage.tsx
@@ -65,6 +67,16 @@ const TRANSLATIONS = {
           title: 'Private & Secure for Your Shop',
           desc: 'Your sales, stock counts, and prices belong to you alone. Fully encrypted and compliant with Nigerian Data Protection laws (NDPA 2023).',
         },
+      ],
+    },
+    notice: 'Works Without Internet • No Monthly Fee • Your Money Stays Safe',
+    steps: {
+      tag: 'Made Simple',
+      title: 'Only 3 Things You Do',
+      items: [
+        { title: 'Add Your Stock', desc: 'When you buy goods, write the name and price once. That is all.' },
+        { title: 'Tap an Item When a Customer Buys', desc: 'When someone buys, just tap the item. Your sale is recorded.' },
+        { title: 'See Your Real Profit Every Evening', desc: 'marketOS shows what you sold, what still remains, and your exact profit.' },
       ],
     },
     bottomCta: {
@@ -127,6 +139,16 @@ const TRANSLATIONS = {
         },
       ],
     },
+    notice: 'E Dey Work Without Network • No Koko Fee • Your Money Dey Safe',
+    steps: {
+      tag: 'Dem Make Am Easy',
+      title: 'Just 3 Things You Go Do',
+      items: [
+        { title: 'Add Your Goods', desc: 'When you buy goods, write the name and price once. Na only that.' },
+        { title: 'Tap Am When Customer Buy', desc: 'When customer buy, just tap the goods. Your sale don record.' },
+        { title: 'See Your Real Gain Every Evening', desc: 'marketOS go show wetin you sell, wetin remain, and your exact gain.' },
+      ],
+    },
     bottomCta: {
       title: 'You Ready To Know Your Real Evening Shop Gain?',
       subtitle:
@@ -185,6 +207,16 @@ const TRANSLATIONS = {
           title: 'Ihe Nzuzo Ego Gị Dị 100% Nchebe',
           desc: 'Ahịa gị, ọnụahịa gị na ngwaahịa gị bụ naanị nke gị. Echedoro ya nke ọma n’okpuru iwu nchekwa data Naijiria (NDPA 2023).',
         },
+      ],
+    },
+    notice: 'Ọ na-arụ ọrụ n’enweghị netwọk • Enweghị ụgwọ ọnwa • Ego gị dị nchebe',
+    steps: {
+      tag: 'E Mere Ya Dị Mfe',
+      title: 'Naanị Ihe Atọ I Na-eme',
+      items: [
+        { title: 'Tinye Ngwaahịa Gị', desc: 'Mgbe ị zụrụ ngwaahịa, dee aha na ọnụahịa otu ugboro. Ọ bụ naanị nke ahụ.' },
+        { title: 'Pịa Ngwaahịa Mgbe Onye Ahịa Zụtara', desc: 'Mgbe onye zụtara ihe, pịa naanị ngwaahịa ahụ. Edekọla ahịa gị.' },
+        { title: 'Hụ Ezigbo Uru Gị Kwa Mgbede', desc: 'marketOS na-egosi ihe i ree, ihe fọdụrụ, na ezigbo uru gị.' },
       ],
     },
     bottomCta: {
@@ -247,6 +279,16 @@ const TRANSLATIONS = {
         },
       ],
     },
+    notice: 'Ó ń ṣiṣẹ́ láìsí intanẹ́ẹ̀tì • Kò sí owó oṣù • Owó rẹ wà ní ààbò',
+    steps: {
+      tag: 'Ẹ Rọrùn Rẹ́',
+      title: 'Nǹkan Mẹ́ta Péré Tí O Máa Ṣe',
+      items: [
+        { title: 'Fi Ọjà Rẹ Sílẹ̀', desc: 'Nígbà tí o bá ra ọjà, kọ orúkọ àti owó rẹ lẹ́ẹ̀kan péré. Ìyẹn nìkan.' },
+        { title: 'Tẹ Ọjà Nígbà Tí Oníbàárà Bá Ra', desc: 'Nígbà tí oníbàárà bá ra ọjà, tẹ ọjà náà péré. A ti kọ ọjà títà rẹ sílẹ̀.' },
+        { title: 'Wo Èrè Rẹ Ní Alẹ́ Kọ̀ọ̀kan', desc: 'marketOS máa fi ohun tí o tà, ohun tó kù, àti èrè rẹ gangan hàn ọ́.' },
+      ],
+    },
     bottomCta: {
       title: 'Ṣé O Ti Ṣe Tán Láti Mọ Èrè Ṣọ́ọ̀bù Rẹ Tòótọ́ Ní Alẹ́?',
       subtitle:
@@ -305,6 +347,16 @@ const TRANSLATIONS = {
           title: 'Sirrin Shagonka A Tsare Yake 100%',
           desc: 'Cinikinka, adadin kayanka da farashinka naka ne kai kaɗai. An kare su a ƙarƙashin dokar kare bayanan Najeriya (NDPA 2023).',
         },
+      ],
+    },
+    notice: 'Yana Aiki Ba Intanet • Babu Kuɗin Wata • Kuɗinka Yana A Tsare',
+    steps: {
+      tag: 'An Sauƙaƙe Shi',
+      title: 'Abubuwa Uku Kaɗai ZaKa Yi',
+      items: [
+        { title: 'Ƙara Kayanka', desc: 'Idan ka sayi kaya, rubuta suna da farashi sau ɗaya kaɗai. Shi ke nan.' },
+        { title: 'Danna Kaya Idan Abokin Ciniki Ya Sayi', desc: 'Idan abokin ciniki ya sayi, danna kayan kawai. An rubuta cinikinka.' },
+        { title: 'Duba Ainihin Ribarka Kowace Yamma', desc: 'marketOS zai nuna abin da ka sayar, abin da ya rage, da ainihin ribarka.' },
       ],
     },
     bottomCta: {
@@ -366,7 +418,10 @@ export default function LandingScreen({ navigation }) {
 
   useEffect(() => {
     AsyncStorage.getItem('marketos_landing_lang').then((saved) => {
-      if (saved && LANG_KEYS.includes(saved)) setCurrentLang(saved);
+      if (saved && LANG_KEYS.includes(saved)) {
+        setCurrentLang(saved);
+        setAppLang(saved);
+      }
     });
     const loop = Animated.loop(
       Animated.timing(spin, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: true })
@@ -378,6 +433,7 @@ export default function LandingScreen({ navigation }) {
   const handleLanguageChange = (lang) => {
     setCurrentLang(lang);
     AsyncStorage.setItem('marketos_landing_lang', lang).catch(() => {});
+    setAppLang(lang);
   };
 
   const launchApp = () => navigation.goBack();
@@ -421,15 +477,14 @@ export default function LandingScreen({ navigation }) {
         <Animated.View style={{ transform: [{ rotate: sparkleRotate }] }}>
           <Ionicons name="sparkles" size={13} color="#020617" />
         </Animated.View>
-        <Text style={s.topBarText}>
-          100% Offline-First • Multi-Device Concurrency • No Jargon • Zero Subscription Fees
-        </Text>
+        <Text style={s.topBarText}>{t.notice}</Text>
       </LinearGradient>
 
       {/* HEADER */}
       <View style={s.header}>
         <BrandLogo size="md" />
         <View style={s.headerActions}>
+          <VoiceGuideButton page="landing" />
           <TouchableOpacity onPress={scrollToFeatures} activeOpacity={0.7} style={s.navLink}>
             <Text style={s.navLinkText}>Why MarketOS</Text>
           </TouchableOpacity>
@@ -576,6 +631,26 @@ export default function LandingScreen({ navigation }) {
               </View>
             </Animated.View>
           ))}
+        </View>
+
+        {/* HOW IT WORKS — 3 SIMPLE STEPS */}
+        <View style={s.stepsSection}>
+          <View style={s.stepsTag}>
+            <Ionicons name="checkmark-circle" size={13} color="#34d399" />
+            <Text style={s.stepsTagText}>{t.steps.tag}</Text>
+          </View>
+          <Text style={s.featuresTitle}>{t.steps.title}</Text>
+          <View style={s.stepsList}>
+            {t.steps.items.map((step, index) => (
+              <View key={index} style={s.stepCard}>
+                <View style={s.stepNum}>
+                  <Text style={s.stepNumText}>{index + 1}</Text>
+                </View>
+                <Text style={s.stepTitle}>{step.title}</Text>
+                <Text style={s.stepDesc}>{step.desc}</Text>
+              </View>
+            ))}
+          </View>
         </View>
 
         {/* BOTTOM CTA */}
@@ -806,6 +881,74 @@ const s = StyleSheet.create({
     lineHeight: 19,
     textAlign: 'center',
     maxWidth: 460,
+  },
+  stepsSection: {
+    paddingHorizontal: 20,
+    paddingVertical: 48,
+    gap: 14,
+    alignItems: 'center',
+    backgroundColor: 'rgba(30,41,59,0.25)',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#1e293b',
+  },
+  stepsTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.3)',
+  },
+  stepsTagText: {
+    color: '#34d399',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+  },
+  stepsList: {
+    width: '100%',
+    gap: 12,
+    marginTop: 8,
+  },
+  stepCard: {
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(13,17,26,0.95)',
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    padding: 24,
+  },
+  stepNum: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: '#f59e0b',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  stepNumText: {
+    color: '#020617',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  stepTitle: {
+    color: '#f1f5f9',
+    fontSize: 16,
+    fontWeight: '900',
+    textAlign: 'center',
+  },
+  stepDesc: {
+    color: '#94a3b8',
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'center',
   },
   card: {
     backgroundColor: 'rgba(13,17,26,0.95)',
