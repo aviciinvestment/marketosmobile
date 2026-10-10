@@ -43,7 +43,7 @@ export default function ProductModal({ visible, product, onClose, onSave }) {
 
   if (!visible || !form) return null;
 
-  const unitFallback = t('product.soldAsExample');
+  const unitFallback = t('product.thisUnit');
   const purchasePrice = Number(form.purchasePrice) || 0;
   const qtyPurchased = Number(form.quantityPurchased) || 0;
 
@@ -172,7 +172,7 @@ export default function ProductModal({ visible, product, onClose, onSave }) {
                   keyboardType="numeric"
                   value={String(form.quantityPurchased || '')}
                   onChangeText={(v) => setForm({ ...form, quantityPurchased: parseFloat(v) || 0 })}
-                  placeholder="e.g. 25"
+                  placeholder={t('product.qtyPlaceholder')}
                   placeholderTextColor={theme.mutedForeground}
                   style={[styles.input, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
                 />
@@ -263,7 +263,7 @@ export default function ProductModal({ visible, product, onClose, onSave }) {
                           keyboardType="numeric"
                           value={unit.price === 0 || unit.price === '' ? '' : String(unit.price)}
                           onChangeText={(v) => updateSellingUnit(unit.id, 'price', parseFloat(v) || 0)}
-                          placeholder="₦"
+                          placeholder={tf('product.pricePlaceholder', unitName)}
                           placeholderTextColor={theme.mutedForeground}
                           style={[styles.input, styles.inputSm, { backgroundColor: theme.card, borderColor: theme.border, color: theme.foreground }]}
                         />
@@ -285,7 +285,7 @@ export default function ProductModal({ visible, product, onClose, onSave }) {
                               keyboardType="numeric"
                               value={y === 0 ? '' : String(y)}
                               onChangeText={(v) => updateSellingUnit(unit.id, 'yieldFromTotal', parseFloat(v) || 0)}
-                              placeholder={t('product.yieldPlaceholder')}
+                              placeholder={tf('product.yieldPlaceholder', unitName)}
                               placeholderTextColor={theme.mutedForeground}
                               style={[
                                 styles.yieldInput,

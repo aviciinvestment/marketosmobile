@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,8 @@ import LegalModal from '../components/LegalModal';
 import SupportWidget from '../components/SupportWidget';
 import VoiceGuideButton from '../components/VoiceGuideButton';
 import { setAppLang } from '../i18n';
+import { useSyncContext } from '../hooks/SyncContext';
+import { getTheme } from '../utils/theme';
 
 // ---------------------------------------------------------------------------
 // i18n dictionary — verbatim port of web/src/components/LandingPage.tsx
@@ -405,6 +407,9 @@ const FEATURE_METRICS = [
 // Screen
 // ---------------------------------------------------------------------------
 export default function LandingScreen({ navigation }) {
+  const { isDarkMode } = useSyncContext();
+  const c = useMemo(() => makePalette(isDarkMode), [isDarkMode]);
+  const s = useMemo(() => makeStyles(c), [c]);
   const [currentLang, setCurrentLang] = useState('en');
   const [legalTab, setLegalTab] = useState(null);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -465,7 +470,7 @@ export default function LandingScreen({ navigation }) {
 
   return (
     <View style={s.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={c.statusBar} />
 
       {/* TOP NOTIFICATION BAR */}
       <LinearGradient
@@ -484,7 +489,10 @@ export default function LandingScreen({ navigation }) {
       <View style={s.header}>
         <BrandLogo size="md" />
         <View style={s.headerActions}>
-          <VoiceGuideButton page="landing" />
+          <VoiceGuideButton
+            page="landing"
+            theme={{ primary: '#F5C518', surface: c.surface, border: c.borderStrong, mutedForeground: c.textMuted }}
+          />
           <TouchableOpacity onPress={scrollToFeatures} activeOpacity={0.7} style={s.navLink}>
             <Text style={s.navLinkText}>Why MarketOS</Text>
           </TouchableOpacity>
@@ -707,8 +715,34 @@ export default function LandingScreen({ navigation }) {
   );
 }
 
-const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#07090E' },
+// ---------------------------------------------------------------------------
+// Theme palette — mirrors web/src/components/LandingPage.tsx tokens so the
+// Guide page follows the app-wide light / dark mode setting.
+// ---------------------------------------------------------------------------
+const makePalette = (isDark) => {
+  const th = getTheme(isDark);
+  return {
+    statusBar: isDark ? 'light-content' : 'dark-content',
+    bg: th.background,
+    card: isDark ? 'rgba(13,17,26,0.95)' : th.card,
+    footerBg: isDark ? '#05070B' : th.card,
+    bar: isDark ? '#0B0E17' : th.card,
+    surface: isDark ? '#0f172a' : th.surface,
+    borderStrong: isDark ? 'rgba(30,41,59,0.8)' : th.border,
+    stepsBg: isDark ? 'rgba(30,41,59,0.25)' : 'rgba(241,243,247,0.75)',
+    textStrong: isDark ? '#f1f5f9' : th.foreground,
+    textBody: isDark ? '#cbd5e1' : '#4b5563',
+    textMuted: isDark ? '#94a3b8' : th.mutedForeground,
+    textFaint: isDark ? '#64748b' : '#9ca3af',
+    amber: th.amber,
+    amberSoft: isDark ? 'rgba(251,191,36,0.9)' : '#b45309',
+    cardTopBorder: isDark ? 'rgba(251,191,36,0.9)' : '#f59e0b',
+    emerald: th.emerald,
+  };
+};
+
+const makeStyles = (c) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: c.bg },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -732,12 +766,12 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(30,41,59,0.8)',
-    backgroundColor: '#07090E',
+    borderBottomColor: c.borderStrong,
+    backgroundColor: c.bg,
   },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   navLink: { paddingHorizontal: 8, paddingVertical: 6 },
-  navLinkText: { color: '#cbd5e1', fontSize: 12, fontWeight: '700' },
+  navLinkText: { color: c.textBody, fontSize: 12, fontWeight: '700' },
   headerCta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -748,29 +782,29 @@ const s = StyleSheet.create({
   },
   headerCtaText: { color: '#020617', fontSize: 12, fontWeight: '900' },
   langBar: {
-    backgroundColor: '#0B0E17',
+    backgroundColor: c.bar,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(30,41,59,0.8)',
+    borderBottomColor: c.borderStrong,
     paddingHorizontal: 14,
     paddingVertical: 9,
     gap: 8,
   },
   langLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  langLabel: { color: '#fbbf24', fontSize: 11, fontWeight: '800' },
+  langLabel: { color: c.amber, fontSize: 11, fontWeight: '800' },
   langChips: { gap: 6, paddingRight: 8 },
   langChip: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
-    backgroundColor: 'rgba(15,23,42,0.8)',
+    borderColor: c.borderStrong,
+    backgroundColor: c.surface,
   },
   langChipActive: {
     backgroundColor: '#F5C518',
     borderColor: '#fde68a',
   },
-  langChipText: { color: '#cbd5e1', fontSize: 11, fontWeight: '700' },
+  langChipText: { color: c.textBody, fontSize: 11, fontWeight: '700' },
   langChipTextActive: { color: '#000000', fontWeight: '900' },
   scrollContent: { paddingBottom: 40 },
   hero: { paddingHorizontal: 16, paddingTop: 40, paddingBottom: 36, alignItems: 'center' },
@@ -790,15 +824,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 999,
-    backgroundColor: '#0f172a',
+    backgroundColor: c.surface,
     borderWidth: 1,
     borderColor: 'rgba(245,158,11,0.3)',
     marginBottom: 22,
     maxWidth: '100%',
   },
-  badgeText: { color: '#fbbf24', fontSize: 11, fontWeight: '700', flexShrink: 1 },
+  badgeText: { color: c.amber, fontSize: 11, fontWeight: '700', flexShrink: 1 },
   heroTitle: {
-    color: '#f1f5f9',
+    color: c.textStrong,
     fontSize: 28,
     fontWeight: '900',
     letterSpacing: -0.8,
@@ -806,9 +840,9 @@ const s = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 640,
   },
-  heroTitleHighlight: { color: '#fbbf24' },
+  heroTitleHighlight: { color: c.amber },
   heroSubtitle: {
-    color: '#cbd5e1',
+    color: c.textBody,
     fontSize: 14,
     lineHeight: 22,
     textAlign: 'center',
@@ -833,21 +867,21 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
     borderRadius: 14,
-    backgroundColor: '#0f172a',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: 'rgba(148,163,184,0.35)',
+    borderColor: c.borderStrong,
   },
-  heroCtaSecondaryText: { color: '#e2e8f0', fontSize: 14, fontWeight: '700' },
+  heroCtaSecondaryText: { color: c.textStrong, fontSize: 14, fontWeight: '700' },
   trustRow: {
     marginTop: 40,
     paddingTop: 26,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(30,41,59,0.8)',
+    borderTopColor: c.borderStrong,
     width: '100%',
     gap: 10,
   },
   trustItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  trustText: { color: '#cbd5e1', fontSize: 12, fontWeight: '600' },
+  trustText: { color: c.textBody, fontSize: 12, fontWeight: '600' },
   featuresSection: { paddingHorizontal: 16, paddingTop: 44, paddingBottom: 44, gap: 18 },
   featuresHead: { alignItems: 'center', marginBottom: 10, gap: 10 },
   featuresTag: {
@@ -862,21 +896,21 @@ const s = StyleSheet.create({
     borderColor: 'rgba(245,158,11,0.3)',
   },
   featuresTagText: {
-    color: '#fbbf24',
+    color: c.amber,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
   featuresTitle: {
-    color: '#f1f5f9',
+    color: c.textStrong,
     fontSize: 25,
     fontWeight: '900',
     letterSpacing: -0.5,
     textAlign: 'center',
   },
   featuresSubtitle: {
-    color: '#94a3b8',
+    color: c.textMuted,
     fontSize: 12,
     lineHeight: 19,
     textAlign: 'center',
@@ -887,10 +921,10 @@ const s = StyleSheet.create({
     paddingVertical: 48,
     gap: 14,
     alignItems: 'center',
-    backgroundColor: 'rgba(30,41,59,0.25)',
+    backgroundColor: c.stepsBg,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: c.borderStrong,
   },
   stepsTag: {
     flexDirection: 'row',
@@ -904,7 +938,7 @@ const s = StyleSheet.create({
     borderColor: 'rgba(16,185,129,0.3)',
   },
   stepsTagText: {
-    color: '#34d399',
+    color: c.emerald,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.2,
@@ -918,10 +952,10 @@ const s = StyleSheet.create({
   stepCard: {
     alignItems: 'center',
     gap: 8,
-    backgroundColor: 'rgba(13,17,26,0.95)',
+    backgroundColor: c.card,
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: c.borderStrong,
     padding: 24,
   },
   stepNum: {
@@ -939,24 +973,24 @@ const s = StyleSheet.create({
     fontWeight: '900',
   },
   stepTitle: {
-    color: '#f1f5f9',
+    color: c.textStrong,
     fontSize: 16,
     fontWeight: '900',
     textAlign: 'center',
   },
   stepDesc: {
-    color: '#94a3b8',
+    color: c.textMuted,
     fontSize: 12,
     lineHeight: 19,
     textAlign: 'center',
   },
   card: {
-    backgroundColor: 'rgba(13,17,26,0.95)',
+    backgroundColor: c.card,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: c.borderStrong,
     borderTopWidth: 2,
-    borderTopColor: 'rgba(251,191,36,0.9)',
+    borderTopColor: c.cardTopBorder,
     padding: 20,
     gap: 8,
   },
@@ -973,7 +1007,7 @@ const s = StyleSheet.create({
   },
   cardHeadRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   cardTag: {
-    color: '#fbbf24',
+    color: c.amber,
     fontSize: 9,
     fontWeight: '800',
     fontFamily: 'monospace',
@@ -985,56 +1019,56 @@ const s = StyleSheet.create({
     paddingVertical: 2,
   },
   cardIndex: {
-    color: '#94a3b8',
+    color: c.textMuted,
     fontSize: 10,
     fontWeight: '700',
     fontFamily: 'monospace',
-    backgroundColor: '#0f172a',
+    backgroundColor: c.surface,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: c.borderStrong,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  cardTitle: { color: '#f1f5f9', fontSize: 16, fontWeight: '900' },
-  cardDesc: { color: '#cbd5e1', fontSize: 12.5, lineHeight: 19 },
+  cardTitle: { color: c.textStrong, fontSize: 16, fontWeight: '900' },
+  cardDesc: { color: c.textBody, fontSize: 12.5, lineHeight: 19 },
   cardFoot: {
     marginTop: 8,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(30,41,59,0.8)',
+    borderTopColor: c.borderStrong,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  cardMetric: { color: 'rgba(251,191,36,0.9)', fontSize: 11, fontWeight: '600', flexShrink: 1, marginRight: 8 },
+  cardMetric: { color: c.amberSoft, fontSize: 11, fontWeight: '600', flexShrink: 1, marginRight: 8 },
   bottomCta: {
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: c.borderStrong,
     paddingVertical: 40,
     paddingHorizontal: 20,
     alignItems: 'center',
     gap: 14,
   },
-  bottomCtaTitle: { color: '#f1f5f9', fontSize: 24, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
-  bottomCtaSubtitle: { color: '#cbd5e1', fontSize: 13, lineHeight: 21, textAlign: 'center', maxWidth: 480 },
+  bottomCtaTitle: { color: c.textStrong, fontSize: 24, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
+  bottomCtaSubtitle: { color: c.textBody, fontSize: 13, lineHeight: 21, textAlign: 'center', maxWidth: 480 },
   bottomCtaBtnWrap: { borderRadius: 14, overflow: 'hidden', marginTop: 6 },
   bottomCtaBtn: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 14 },
   bottomCtaBtnText: { color: '#020617', fontSize: 14, fontWeight: '900' },
   footer: {
-    backgroundColor: '#05070B',
+    backgroundColor: c.footerBg,
     borderTopWidth: 1,
-    borderTopColor: '#1e293b',
+    borderTopColor: c.borderStrong,
     paddingVertical: 28,
     paddingHorizontal: 20,
     gap: 16,
     alignItems: 'center',
   },
   footerBrand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  footerTagline: { color: '#94a3b8', fontSize: 11, fontWeight: '600' },
+  footerTagline: { color: c.textMuted, fontSize: 11, fontWeight: '600' },
   footerLinks: { alignItems: 'center', gap: 10 },
-  footerLink: { color: '#94a3b8', fontSize: 12, fontWeight: '500' },
-  footerRights: { color: '#64748b', fontSize: 11 },
+  footerLink: { color: c.textMuted, fontSize: 12, fontWeight: '500' },
+  footerRights: { color: c.textFaint, fontSize: 11 },
   fab: {
     position: 'absolute',
     right: 16,

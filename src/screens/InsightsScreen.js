@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { useSyncContext } from '../hooks/SyncContext';
 import { getTheme } from '../utils/theme';
@@ -11,6 +12,7 @@ import {
   saleRevenue,
   stockOf
 } from '../utils/finance';
+import { getApiEndpoints } from '../config/api';
 import { useAppT, useAppTF } from '../i18n';
 
 const PERIODS = ['today', 'week', 'month', 'year', 'custom', 'all'];
@@ -19,7 +21,7 @@ const isValidDate = (value) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(new Date(`${value}T00:00:00`).getTime());
 
 export default function InsightsScreen() {
-  const { isDarkMode, products, sales, expenses } = useSyncContext();
+  const { isDarkMode, products, sales, expenses, user, isFounder } = useSyncContext();
   const theme = getTheme(isDarkMode);
   const t = useAppT();
   const tf = useAppTF();
@@ -27,6 +29,81 @@ export default function InsightsScreen() {
   const [period, setPeriod] = useState('today');
   const [startText, setStartText] = useState('');
   const [endText, setEndText] = useState('');
+
+  // ---- Insight paywall (Paystack) ----
+  const userId = user?.uid || '';
+  const userEmail = user?.email || '';
+  const userName = user?.displayName || '';
+  const [paywall, setPaywall] = useState(null); // null = still checking
+  const [paywallBusy, setPaywallBusy] = useState(false);
+  const [paywallError, setPaywallError] = useState('');
+
+  const fetchPaywallStatus = useCallback(async () => {
+    if (!userId) {
+      setPaywall({ required: false, hasAccess: true });
+      return;
+    }
+    try {
+      const endpoints = await getApiEndpoints();
+      const url = `${endpoints.paywallStatus}?userId=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('status');
+      const data = await res.json();
+      setPaywall(data);
+      return data;
+    } catch (e) {
+      // Fail open so a merchant is never locked out of their own on-device data.
+      setPaywall((prev) => prev || { required: false, hasAccess: true, amount: 0, durationDays: 30 });
+      return null;
+    }
+  }, [userId, userEmail]);
+
+  useEffect(() => {
+    if (isFounder) {
+      setPaywall({ required: false, hasAccess: true, exempt: true });
+      return;
+    }
+    fetchPaywallStatus();
+  }, [isFounder, fetchPaywallStatus]);
+
+  const startPaywallPayment = useCallback(async () => {
+    setPaywallError('');
+    setPaywallBusy(true);
+    try {
+      const endpoints = await getApiEndpoints();
+      const initRes = await fetch(endpoints.paywallInitialize, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, email: userEmail, name: userName }),
+      });
+      const initData = await initRes.json();
+      if (!initRes.ok || !initData?.authorizationUrl) {
+        throw new Error(initData?.error || 'Could not start payment. Please try again.');
+      }
+
+      await WebBrowser.openBrowserAsync(initData.authorizationUrl);
+
+      // When the user returns, verify the transaction server-side.
+      const verifyRes = await fetch(endpoints.paywallVerify(initData.reference));
+      const verifyData = await verifyRes.json();
+      if (verifyData?.success) {
+        await fetchPaywallStatus();
+        Alert.alert('Payment received', 'Insights are now unlocked.');
+      } else {
+        // Not paid yet — refresh status silently.
+        await fetchPaywallStatus();
+      }
+    } catch (e) {
+      setPaywallError(e?.message || 'Could not start payment. Please try again.');
+    } finally {
+      setPaywallBusy(false);
+    }
+  }, [userId, userEmail, userName, fetchPaywallStatus]);
+
+  const paywallLocked =
+    !isFounder && paywall && paywall.required === true && paywall.hasAccess === false;
+
+  const paywallChecking = !isFounder && paywall === null;
 
   const customActive = isValidDate(startText) && isValidDate(endText);
   const customStart = customActive ? startText : '';
@@ -179,6 +256,85 @@ export default function InsightsScreen() {
       valueColor: theme.foreground
     }
   ];
+
+  if (paywallChecking) {
+    return (
+      <View style={[styles.centerScreen, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.centerScreenText, { color: theme.mutedForeground }]}>{t('paywall.checking')}</Text>
+      </View>
+    );
+  }
+
+  if (paywallLocked) {
+    return (
+      <ScrollView
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.paywallCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View style={[styles.paywallIconWrap, { backgroundColor: `${theme.gold}26`, borderColor: `${theme.gold}4D` }]}>
+            <Ionicons name="lock-closed" size={26} color={theme.gold} />
+          </View>
+
+          <Text style={[styles.paywallTitle, { color: theme.foreground }]}>{t('paywall.title')}</Text>
+          <Text style={[styles.paywallSubtitle, { color: theme.mutedForeground }]}>{t('paywall.subtitle')}</Text>
+
+          <View style={[styles.paywallPriceBox, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+            <Text style={[styles.paywallPrice, { color: theme.foreground }]}>
+              {formatNairaRound(paywall.amount || 0)}
+            </Text>
+            <Text style={[styles.paywallPerPeriod, { color: theme.mutedForeground }]}>
+              {(t('paywall.perPeriod') || 'Valid for {0} days').replace('{0}', String(paywall.durationDays || 30))}
+            </Text>
+          </View>
+
+          {!!paywallError && (
+            <View style={[styles.paywallErrorBox, { backgroundColor: `${theme.rose}1A`, borderColor: `${theme.rose}33` }]}>
+              <Ionicons name="alert-triangle" size={15} color={theme.rose} />
+              <Text style={[styles.paywallErrorText, { color: theme.rose }]}>{paywallError}</Text>
+            </View>
+          )}
+
+          {[t('paywall.b1'), t('paywall.b2'), t('paywall.b3')].map((line, i) => (
+            <View key={i} style={styles.paywallBullet}>
+              <Ionicons name="checkmark-circle" size={16} color={theme.emerald} />
+              <Text style={[styles.paywallBulletText, { color: theme.foreground }]}>{line}</Text>
+            </View>
+          ))}
+
+          <TouchableOpacity
+            activeOpacity={0.85}
+            disabled={paywallBusy || paywall.configured === false}
+            onPress={startPaywallPayment}
+            style={[
+              styles.paywallButton,
+              { backgroundColor: theme.primary, opacity: paywallBusy || paywall.configured === false ? 0.6 : 1 }
+            ]}
+          >
+            {paywallBusy ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Ionicons name="lock-closed" size={16} color="#000" />
+            )}
+            <Text style={styles.paywallButtonText}>
+              {paywallBusy ? t('paywall.starting') : t('paywall.unlock')}
+            </Text>
+          </TouchableOpacity>
+
+          <View style={styles.paywallSecureRow}>
+            <Ionicons name="shield-checkmark" size={14} color={theme.emerald} />
+            <Text style={[styles.paywallSecureText, { color: theme.mutedForeground }]}>{t('paywall.secure')}</Text>
+          </View>
+
+          {paywall.configured === false && (
+            <Text style={[styles.paywallNotConfigured, { color: theme.gold }]}>{t('paywall.notConfigured')}</Text>
+          )}
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView
@@ -549,5 +705,60 @@ const styles = StyleSheet.create({
     padding: 14
   },
   attentionDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  attentionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 }
+  attentionText: { flex: 1, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+  centerScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  centerScreenText: { fontSize: 12, fontWeight: '700' },
+  paywallCard: {
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 22,
+    gap: 12,
+    alignItems: 'center'
+  },
+  paywallIconWrap: {
+    width: 60,
+    height: 60,
+    borderRadius: 18,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  paywallTitle: { fontSize: 20, fontWeight: '900', letterSpacing: -0.3, textAlign: 'center' },
+  paywallSubtitle: { fontSize: 13, fontWeight: '600', lineHeight: 19, textAlign: 'center' },
+  paywallPriceBox: {
+    width: '100%',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    alignItems: 'center',
+    gap: 2
+  },
+  paywallPrice: { fontSize: 26, fontWeight: '900' },
+  paywallPerPeriod: { fontSize: 12, fontWeight: '700' },
+  paywallErrorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12
+  },
+  paywallErrorText: { flex: 1, fontSize: 12, fontWeight: '700' },
+  paywallBullet: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, width: '100%' },
+  paywallBulletText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
+  paywallButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    width: '100%',
+    paddingVertical: 15,
+    borderRadius: 14,
+    marginTop: 4
+  },
+  paywallButtonText: { fontSize: 14, fontWeight: '900', color: '#000' },
+  paywallSecureRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  paywallSecureText: { fontSize: 11, fontWeight: '700' },
+  paywallNotConfigured: { fontSize: 11, fontWeight: '700', textAlign: 'center', marginTop: 4 }
 });

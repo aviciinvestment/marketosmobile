@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet, Easing } from 'react-native';
-import { gold } from '../utils/theme';
+import { gold, getTheme } from '../utils/theme';
+import { useSyncContext } from '../hooks/SyncContext';
 
 const SIZES = {
   sm: { box: 24, ring: 2, dot: 10, text: 16, gap: 8 },
@@ -11,6 +12,8 @@ const SIZES = {
 // Native replica of web/src/components/BrandLogo.tsx:
 // a dashed gold ring rotating around a pulsing gold dot, plus the wordmark.
 export default function BrandLogo({ size = 'md', showText = true }) {
+  const { isDarkMode } = useSyncContext();
+  const theme = getTheme(isDarkMode);
   const s = SIZES[size] || SIZES.md;
   const spin = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(0)).current;
@@ -70,7 +73,7 @@ export default function BrandLogo({ size = 'md', showText = true }) {
         />
       </View>
       {showText && (
-        <Text style={[styles.wordmark, { fontSize: s.text }]}>
+        <Text style={[styles.wordmark, { fontSize: s.text, color: theme.foreground }]}>
           market
           <Text style={{ color: gold }}>OS</Text>
         </Text>
@@ -88,7 +91,6 @@ const styles = StyleSheet.create({
   },
   wordmark: {
     fontWeight: '900',
-    color: '#f4f4f5',
     letterSpacing: -0.5,
   },
 });

@@ -30,6 +30,14 @@ export const getApiEndpoints = async () => {
     adminTelemetry: `${baseUrl}/api/admin/telemetry`,
     supportComplaint: `${baseUrl}/api/support/complaint`,
     uploadAvatar: `${baseUrl}/api/profile/upload-avatar`,
+    authValidateSignup: `${baseUrl}/api/auth/validate-signup`,
+    authValidateSignin: `${baseUrl}/api/auth/validate-signin`,
+    authForgotPassword: `${baseUrl}/api/auth/forgot-password`,
+    paywallConfig: `${baseUrl}/api/paywall/config`,
+    paywallStatus: `${baseUrl}/api/paywall/status`,
+    paywallInitialize: `${baseUrl}/api/paywall/initialize`,
+    paywallVerify: (reference) => `${baseUrl}/api/paywall/verify/${encodeURIComponent(reference)}`,
+    adminPaywall: `${baseUrl}/api/admin/paywall`,
   };
 };
 

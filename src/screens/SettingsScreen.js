@@ -81,6 +81,7 @@ export default function SettingsScreen({ navigation }) {
 
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
   const [showPasteUrl, setShowPasteUrl] = useState(false);
   const [pasteUrlValue, setPasteUrlValue] = useState('');
@@ -126,6 +127,7 @@ export default function SettingsScreen({ navigation }) {
   };
 
   const handleUploadPhoto = async () => {
+    if (isUploadingPhoto) return;
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
@@ -142,6 +144,7 @@ export default function SettingsScreen({ navigation }) {
       if (result.canceled) return;
       const asset = result.assets && result.assets[0];
       if (!asset) return;
+
       if (asset.fileSize && asset.fileSize > 2 * 1024 * 1024) {
         Alert.alert(
           'Image File Too Large',
@@ -149,11 +152,49 @@ export default function SettingsScreen({ navigation }) {
         );
         return;
       }
+
+      // expo-image-picker always returns JPEG base64 data, so this prefix is
+      // correct regardless of the original file type.
       const dataUrl = asset.base64 ? 'data:image/jpeg;base64,' + asset.base64 : asset.uri;
+
+      if (!dataUrl.startsWith('data:')) {
+        // We have no inline image data to send to Cloudinary. Keep the local
+        // file so the preview still works, but be honest that it did not sync.
+        setAvatarUrl(asset.uri);
+        Alert.alert(
+          'Saved on This Device Only',
+          'We could not read the image data to upload it to the cloud. Please pick a different photo to sync it to your account.'
+        );
+        return;
+      }
+
+      // Guard the backend's 5MB JSON body limit (base64 adds ~33% overhead),
+      // since asset.fileSize is not always provided by the picker.
+      if (dataUrl.length > 4.5 * 1024 * 1024) {
+        Alert.alert(
+          'Image File Too Large',
+          'This photo is too large to upload. Please choose a smaller image.'
+        );
+        return;
+      }
+
+      setIsUploadingPhoto(true);
       const remoteUrl = await uploadAvatarToBackend(dataUrl);
-      setAvatarUrl(remoteUrl || dataUrl);
+      if (remoteUrl) {
+        setAvatarUrl(remoteUrl);
+      } else {
+        // Cloudinary is unreachable or rejected the image; fall back locally and
+        // tell the user instead of silently appearing to succeed.
+        setAvatarUrl(dataUrl);
+        Alert.alert(
+          'Cloud Upload Unavailable',
+          'We saved your picture on this device, but could not sync it to the cloud right now. Please check your connection and try again.'
+        );
+      }
     } catch {
       Alert.alert('Upload Failed', 'Could not read that image. Please try another photo.');
+    } finally {
+      setIsUploadingPhoto(false);
     }
   };
 
@@ -271,11 +312,19 @@ export default function SettingsScreen({ navigation }) {
               <TouchableOpacity
                 activeOpacity={0.85}
                 onPress={handleUploadPhoto}
-                style={[styles.pillBtn, { backgroundColor: theme.surfaceHover, borderColor: theme.border }]}
+                disabled={isUploadingPhoto}
+                style={[
+                  styles.pillBtn,
+                  { backgroundColor: theme.surfaceHover, borderColor: theme.border, opacity: isUploadingPhoto ? 0.6 : 1 },
+                ]}
               >
-                <Ionicons name="cloud-upload-outline" size={13} color={theme.primary} />
+                {isUploadingPhoto ? (
+                  <ActivityIndicator size="small" color={theme.primary} />
+                ) : (
+                  <Ionicons name="cloud-upload-outline" size={13} color={theme.primary} />
+                )}
                 <Text style={{ fontSize: 11, fontWeight: '800', color: theme.foreground, marginLeft: 5 }}>
-                  Upload
+                  {isUploadingPhoto ? 'Uploading…' : 'Upload'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity

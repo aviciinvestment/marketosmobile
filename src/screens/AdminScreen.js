@@ -23,6 +23,7 @@ const TABS = [
   { key: 'users', label: 'Users' },
   { key: 'logs', label: 'Logs' },
   { key: 'complaints', label: 'Complaints' },
+  { key: 'payments', label: 'Payments' },
 ];
 
 const LOG_FILTERS = [
@@ -112,16 +113,16 @@ const KpiCard = ({ theme, icon, label, value, color, sub, onPress }) => (
     onPress={onPress}
     style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}
   >
-    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-      <Text numberOfLines={1} style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground, letterSpacing: 1, flex: 1, marginRight: 6 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+      <Text numberOfLines={2} style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground, letterSpacing: 0.5, flex: 1, marginRight: 6, lineHeight: 13 }}>
         {label}
       </Text>
       <Ionicons name={icon} size={16} color={color} />
     </View>
-    <Text numberOfLines={1} adjustsFontSizeToFit style={{ fontSize: 20, fontWeight: '900', color: theme.foreground }}>
+    <Text numberOfLines={2} style={{ fontSize: 19, fontWeight: '900', color: theme.foreground, lineHeight: 22 }}>
       {value}
     </Text>
-    <Text numberOfLines={1} style={{ fontSize: 10, color: theme.mutedForeground, marginTop: 4 }}>
+    <Text numberOfLines={2} style={{ fontSize: 10, color: theme.mutedForeground, marginTop: 6, lineHeight: 13 }}>
       {sub}
     </Text>
   </TouchableOpacity>
@@ -141,9 +142,16 @@ export default function AdminScreen({ navigation }) {
   const [logFilter, setLogFilter] = useState('all');
   const [searchLog, setSearchLog] = useState('');
   const [searchUser, setSearchUser] = useState('');
+  const [showPaidOnly, setShowPaidOnly] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearMessage, setClearMessage] = useState('');
   const aliveRef = useRef(true);
+
+  // Paywall / Paystack configuration
+  const [paywall, setPaywall] = useState(null);
+  const [paywallForm, setPaywallForm] = useState({ enabled: true, amount: '', durationDays: '30' });
+  const [paywallSaving, setPaywallSaving] = useState(false);
+  const [paywallMessage, setPaywallMessage] = useState('');
 
   const founderOk =
     isFounder && !!user?.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -194,6 +202,65 @@ export default function AdminScreen({ navigation }) {
     };
   }, [founderOk, loadAll]);
 
+  const fetchPaywall = useCallback(async () => {
+    try {
+      const endpoints = await getApiEndpoints();
+      const data = await safeJson(endpoints.adminPaywall);
+      if (!data || !aliveRef.current) return;
+      setPaywall(data);
+      setPaywallForm({
+        enabled: !!data.settings?.enabled,
+        amount: String(data.settings?.amount ?? ''),
+        durationDays: String(data.settings?.durationDays ?? 30),
+      });
+    } catch (e) {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!founderOk) return undefined;
+    fetchPaywall();
+    return undefined;
+  }, [founderOk, fetchPaywall]);
+
+  const savePaywall = useCallback(async () => {
+    const amountNum = Number(paywallForm.amount);
+    const daysNum = Number(paywallForm.durationDays);
+    if (!Number.isFinite(amountNum) || amountNum < 0) {
+      Alert.alert('Invalid Price', 'Enter a valid price in Naira.');
+      return;
+    }
+    if (!Number.isFinite(daysNum) || daysNum < 1) {
+      Alert.alert('Invalid Duration', 'Enter a valid duration in days.');
+      return;
+    }
+    setPaywallSaving(true);
+    setPaywallMessage('');
+    try {
+      const endpoints = await getApiEndpoints();
+      const res = await safeFetch(endpoints.adminPaywall, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: paywallForm.enabled,
+          amount: amountNum,
+          durationDays: Math.round(daysNum),
+        }),
+      });
+      if (!res || !res.ok) throw new Error('request failed');
+      setPaywallMessage('Paywall settings saved.');
+      await fetchPaywall();
+      setTimeout(() => {
+        if (aliveRef.current) setPaywallMessage('');
+      }, 3500);
+    } catch (e) {
+      Alert.alert('Save Failed', 'Could not save paywall settings. Please try again.');
+    } finally {
+      if (aliveRef.current) setPaywallSaving(false);
+    }
+  }, [paywallForm, fetchPaywall]);
+
   const statusCounts = stats?.statusCounts && typeof stats.statusCounts === 'object' ? stats.statusCounts : {};
   const statusEntries = Object.keys(statusCounts).map((k) => [k, Number(statusCounts[k]) || 0]);
   const totalRequests = statusEntries.reduce((sum, pair) => sum + pair[1], 0);
@@ -242,6 +309,16 @@ export default function AdminScreen({ navigation }) {
       return name.includes(q) || email.includes(q) || uid.includes(q) || phone.includes(q);
     });
   }, [stats, searchUser]);
+
+  // Users with an active paid Insight subscription (from the paywall data), so
+  // the admin can spot who has paid at a glance.
+  const paidAccessByUser = new Map(
+    (Array.isArray(paywall?.access) ? paywall.access : []).map((a) => [a && a.userId, a])
+  );
+  const hasPaid = (u) =>
+    u && paidAccessByUser.has(String(u.userId || u.id || u.uid || ''));
+  const paidUserCount = (Array.isArray(stats?.userList) ? stats.userList : []).filter(hasPaid).length;
+  const visibleUsers = showPaidOnly ? filteredUsers.filter(hasPaid) : filteredUsers;
 
   const copyText = async (text, label) => {
     try {
@@ -533,6 +610,24 @@ export default function AdminScreen({ navigation }) {
                 color={theme.amber}
                 sub="Live telemetry clock"
               />
+              <KpiCard
+                theme={theme}
+                icon="trending-up-outline"
+                label="INSIGHT REVENUE"
+                value={formatNairaRound(paywall?.stats?.revenue || 0)}
+                color={theme.emerald}
+                sub={`${paywall?.stats?.successfulPayments || 0} successful payments`}
+                onPress={() => setActiveTab('payments')}
+              />
+              <KpiCard
+                theme={theme}
+                icon="card-outline"
+                label="ACTIVE SUBSCRIBERS"
+                value={String(paywall?.stats?.activeSubscribers || 0)}
+                color={theme.primary}
+                sub={paywall ? (paywall.settings?.enabled ? 'Paywall enabled' : 'Paywall disabled') : 'Loading…'}
+                onPress={() => setActiveTab('payments')}
+              />
             </View>
 
             <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -595,32 +690,68 @@ export default function AdminScreen({ navigation }) {
                   Full names of signed up users, emails, active phones, inventory count, and revenue volumes.
                 </Text>
               </View>
-              <View style={[styles.countBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Text style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground }}>TOTAL </Text>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: theme.primary }}>{filteredUsers.length}</Text>
+              <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                <View style={[styles.countBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground }}>TOTAL </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: theme.primary }}>{filteredUsers.length}</Text>
+                </View>
+                <View style={[styles.countBadge, { backgroundColor: theme.emerald + '14', borderColor: theme.emerald + '40' }]}>
+                  <Ionicons name="checkmark-circle" size={11} color={theme.emerald} />
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: theme.emerald, marginLeft: 3 }}>PAID </Text>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: theme.emerald }}>{paidUserCount}</Text>
+                </View>
               </View>
             </View>
 
-            <View style={[styles.searchBox, { backgroundColor: theme.surface, borderColor: theme.border, marginTop: 14 }]}>
-              <Ionicons name="search" size={15} color={theme.mutedForeground} />
-              <TextInput
-                value={searchUser}
-                onChangeText={setSearchUser}
-                placeholder="Search by merchant name, email, phone, or UID..."
-                placeholderTextColor={theme.mutedForeground}
-                style={[styles.searchInput, { color: theme.foreground }]}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {!!searchUser && (
-                <TouchableOpacity onPress={() => setSearchUser('')}>
-                  <Ionicons name="close-circle" size={16} color={theme.mutedForeground} />
-                </TouchableOpacity>
-              )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 }}>
+              <View style={[styles.searchBox, { backgroundColor: theme.surface, borderColor: theme.border, flex: 1 }]}>
+                <Ionicons name="search" size={15} color={theme.mutedForeground} />
+                <TextInput
+                  value={searchUser}
+                  onChangeText={setSearchUser}
+                  placeholder="Search by merchant name, email, phone, or UID..."
+                  placeholderTextColor={theme.mutedForeground}
+                  style={[styles.searchInput, { color: theme.foreground }]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {!!searchUser && (
+                  <TouchableOpacity onPress={() => setSearchUser('')}>
+                    <Ionicons name="close-circle" size={16} color={theme.mutedForeground} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setShowPaidOnly((v) => !v)}
+                style={[
+                  styles.tinyBadge,
+                  {
+                    paddingHorizontal: 10,
+                    paddingVertical: 9,
+                    borderWidth: 1,
+                    backgroundColor: showPaidOnly ? theme.emerald + '18' : theme.surface,
+                    borderColor: showPaidOnly ? theme.emerald + '55' : theme.border,
+                  },
+                ]}
+              >
+                <Ionicons name={showPaidOnly ? 'shield-checkmark' : 'shield-outline'} size={13} color={showPaidOnly ? theme.emerald : theme.mutedForeground} />
+                <Text
+                  style={{
+                    fontSize: 9,
+                    fontWeight: '900',
+                    letterSpacing: 0.4,
+                    marginLeft: 4,
+                    color: showPaidOnly ? theme.emerald : theme.mutedForeground,
+                  }}
+                >
+                  {showPaidOnly ? 'PAID ONLY' : 'PAID ONLY'}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <View style={{ marginTop: 14 }}>
-              {filteredUsers.map((u, i) => {
+              {visibleUsers.map((u, i) => {
                 const uid = String(u?.userId || u?.id || u?.uid || '');
                 const name = String(u?.name || 'Merchant');
                 const email = String(u?.email || '');
@@ -644,6 +775,14 @@ export default function AdminScreen({ navigation }) {
                               ACTIVE ACCOUNT
                             </Text>
                           </View>
+                          {hasPaid(u) && (
+                            <View style={[styles.tinyBadge, { backgroundColor: theme.amber + '18', borderColor: theme.amber + '55' }]}>
+                              <Ionicons name="checkmark-circle" size={10} color={theme.amber} />
+                              <Text style={{ fontSize: 9, fontWeight: '900', color: theme.amber, letterSpacing: 0.5, marginLeft: 3 }}>
+                                PAID
+                              </Text>
+                            </View>
+                          )}
                         </View>
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
@@ -713,11 +852,13 @@ export default function AdminScreen({ navigation }) {
                 );
               })}
 
-              {filteredUsers.length === 0 && (
+              {visibleUsers.length === 0 && (
                 <View style={styles.emptyState}>
                   <Ionicons name="people-outline" size={30} color={theme.mutedForeground} />
                   <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 10, textAlign: 'center', lineHeight: 18 }}>
-                    {searchUser
+                    {showPaidOnly
+                      ? 'No paid users yet.'
+                      : searchUser
                       ? `No users found matching "${searchUser}".`
                       : 'No registered merchants yet. Sign-ups will appear here in real-time.'}
                   </Text>
@@ -1023,6 +1164,233 @@ export default function AdminScreen({ navigation }) {
             </View>
           </View>
         )}
+
+        {activeTab === 'payments' && (
+          <View>
+            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <Ionicons name="lock-closed-outline" size={18} color={theme.primary} />
+                <Text style={{ fontSize: 15, fontWeight: '900', color: theme.foreground }}>
+                  Insight Paywall Configuration
+                </Text>
+              </View>
+              <Text style={{ fontSize: 11, color: theme.mutedForeground, lineHeight: 16, marginBottom: 12 }}>
+                Set the price and duration merchants pay to unlock Insights. Switch test/live by changing
+                only PAYSTACK_SECRET_KEY on the server.
+              </Text>
+
+              <View
+                style={[
+                  styles.countBadge,
+                  {
+                    alignSelf: 'flex-start',
+                    marginBottom: 14,
+                    backgroundColor: paywall?.configured ? theme.emerald + '1A' : theme.red + '1A',
+                    borderColor: paywall?.configured ? theme.emerald + '40' : theme.red + '40',
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={paywall?.configured ? 'checkmark-circle' : 'alert-circle'}
+                  size={13}
+                  color={paywall?.configured ? theme.emerald : theme.red}
+                />
+                <Text style={{ fontSize: 10, fontWeight: '900', marginLeft: 5, color: paywall?.configured ? theme.emerald : theme.red }}>
+                  {paywall?.configured ? 'PAYSTACK CONNECTED' : 'PAYSTACK NOT CONFIGURED'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => setPaywallForm((f) => ({ ...f, enabled: !f.enabled }))}
+                style={[
+                  styles.tabChip,
+                  {
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    alignSelf: 'stretch',
+                    marginBottom: 14,
+                    backgroundColor: paywallForm.enabled ? theme.emerald + '1A' : theme.surface,
+                    borderColor: paywallForm.enabled ? theme.emerald + '40' : theme.border,
+                  },
+                ]}
+              >
+                <View
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 4,
+                    backgroundColor: paywallForm.enabled ? theme.emerald : theme.mutedForeground,
+                    marginRight: 8,
+                  }}
+                />
+                <Text style={{ fontSize: 12, fontWeight: '900', color: paywallForm.enabled ? theme.emerald : theme.mutedForeground }}>
+                  {paywallForm.enabled ? 'ENABLED (USERS MUST PAY)' : 'DISABLED (FREE ACCESS)'}
+                </Text>
+              </TouchableOpacity>
+
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground, marginBottom: 6 }}>
+                PRICE (₦ NAIRA)
+              </Text>
+              <TextInput
+                value={paywallForm.amount}
+                onChangeText={(v) => setPaywallForm((f) => ({ ...f, amount: v }))}
+                keyboardType="numeric"
+                placeholder="e.g. 5000"
+                placeholderTextColor={theme.mutedForeground}
+                style={[styles.paywallInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+              />
+
+              <Text style={{ fontSize: 10, fontWeight: '800', color: theme.mutedForeground, marginTop: 12, marginBottom: 6 }}>
+                DURATION (DAYS)
+              </Text>
+              <TextInput
+                value={paywallForm.durationDays}
+                onChangeText={(v) => setPaywallForm((f) => ({ ...f, durationDays: v }))}
+                keyboardType="numeric"
+                placeholder="e.g. 30"
+                placeholderTextColor={theme.mutedForeground}
+                style={[styles.paywallInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.foreground }]}
+              />
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                disabled={paywallSaving}
+                onPress={savePaywall}
+                style={[styles.saveBtn, { backgroundColor: theme.primary, opacity: paywallSaving ? 0.6 : 1 }]}
+              >
+                {paywallSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Ionicons name="save-outline" size={15} color="#000" />
+                )}
+                <Text style={{ fontSize: 13, fontWeight: '900', color: '#000', marginLeft: 7 }}>
+                  {paywallSaving ? 'Saving…' : 'Save Settings'}
+                </Text>
+              </TouchableOpacity>
+
+              {!!paywallMessage && (
+                <Text style={{ fontSize: 11, fontWeight: '800', color: theme.emerald, marginTop: 10, textAlign: 'center' }}>
+                  {paywallMessage}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.grid}>
+              <KpiCard
+                theme={theme}
+                icon="cash-outline"
+                label="TOTAL REVENUE"
+                value={formatNairaRound(paywall?.stats?.revenue || 0)}
+                color={theme.emerald}
+                sub="All-time successful payments"
+              />
+              <KpiCard
+                theme={theme}
+                icon="checkmark-done-outline"
+                label="SUCCESSFUL"
+                value={String(paywall?.stats?.successfulPayments || 0)}
+                color={theme.primary}
+                sub="Completed transactions"
+              />
+              <KpiCard
+                theme={theme}
+                icon="people-outline"
+                label="SUBSCRIBERS"
+                value={String(paywall?.stats?.activeSubscribers || 0)}
+                color={theme.primary}
+                sub="Active Insight access"
+              />
+              <KpiCard
+                theme={theme}
+                icon="receipt-outline"
+                label="ATTEMPTS"
+                value={String(paywall?.stats?.totalPayments || 0)}
+                color={theme.sky}
+                sub="Total payment attempts"
+              />
+            </View>
+
+            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={{ fontSize: 13, fontWeight: '900', color: theme.foreground, marginBottom: 12 }}>
+                Active Subscribers ({paywall?.access?.length || 0})
+              </Text>
+              {(paywall?.access || []).length === 0 ? (
+                <Text style={{ fontSize: 12, color: theme.mutedForeground, textAlign: 'center', paddingVertical: 20 }}>
+                  No active subscribers yet.
+                </Text>
+              ) : (
+                (paywall?.access || []).map((a, i) => (
+                  <View
+                    key={`${a.userId}-${i}`}
+                    style={[styles.paywallRow, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                  >
+                    <View style={{ flex: 1, marginRight: 8 }}>
+                      <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '800', color: theme.foreground }}>
+                        {a.email || 'No email'}
+                      </Text>
+                      <Text numberOfLines={1} style={{ fontSize: 10, color: theme.mutedForeground, marginTop: 2 }}>
+                        {midTrunc(a.userId, 26)}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '900', color: theme.emerald }}>
+                        {formatNairaRound((a.amountKobo || 0) / 100)}
+                      </Text>
+                      <Text style={{ fontSize: 9, color: theme.mutedForeground, marginTop: 2 }}>
+                        Expires {formatDate(a.expiresAt) || '—'}
+                      </Text>
+                    </View>
+                  </View>
+                ))
+              )}
+            </View>
+
+            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Text style={{ fontSize: 13, fontWeight: '900', color: theme.foreground, marginBottom: 12 }}>
+                Recent Payment Transactions ({paywall?.payments?.length || 0})
+              </Text>
+              {(paywall?.payments || []).length === 0 ? (
+                <Text style={{ fontSize: 12, color: theme.mutedForeground, textAlign: 'center', paddingVertical: 20 }}>
+                  No payment transactions yet.
+                </Text>
+              ) : (
+                (paywall?.payments || []).map((p, i) => {
+                  const ok = p.status === 'success';
+                  const pending = p.status === 'pending';
+                  const tone = ok ? theme.emerald : pending ? theme.amber : theme.red;
+                  return (
+                    <View
+                      key={`${p.reference}-${i}`}
+                      style={[styles.paywallRow, { borderColor: theme.border, backgroundColor: theme.surface }]}
+                    >
+                      <View style={{ flex: 1, marginRight: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <View style={[styles.paywallStatusDot, { backgroundColor: tone }]} />
+                          <Text style={{ fontSize: 10, fontWeight: '900', color: tone, textTransform: 'uppercase' }}>
+                            {p.status}
+                          </Text>
+                        </View>
+                        <Text numberOfLines={1} style={{ fontSize: 10, color: theme.mutedForeground, marginTop: 3 }}>
+                          {midTrunc(p.reference, 30)}
+                        </Text>
+                      </View>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '900', color: theme.emerald }}>
+                          {formatNairaRound((p.amountKobo || 0) / 100)}
+                        </Text>
+                        <Text numberOfLines={1} style={{ fontSize: 9, color: theme.mutedForeground, marginTop: 2 }}>
+                          {p.email || ''}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -1093,7 +1461,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 16, paddingBottom: 36 },
   card: { borderRadius: 20, borderWidth: 1, padding: 16, marginBottom: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },
-  kpiCard: { width: '48%', borderRadius: 18, borderWidth: 1, padding: 14, marginBottom: 10 },
+  kpiCard: { width: '48%', borderRadius: 18, borderWidth: 1, padding: 14, marginBottom: 10, minHeight: 116, justifyContent: 'space-between' },
   iconChip: { width: 28, height: 28, borderRadius: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   barTrack: { height: 6, borderRadius: 4, overflow: 'hidden' },
   divider: { borderTopWidth: 1, paddingTop: 12, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -1116,6 +1484,31 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   searchInput: { flex: 1, fontSize: 12, paddingVertical: 0 },
+  paywallInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    height: 44,
+    paddingHorizontal: 12,
+    fontSize: 13,
+  },
+  saveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    paddingVertical: 13,
+    marginTop: 16,
+  },
+  paywallRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 8,
+  },
+  paywallStatusDot: { width: 8, height: 8, borderRadius: 4 },
   countBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   userRow: { borderRadius: 18, borderWidth: 1, padding: 14, marginBottom: 12 },
   avatar: { width: 46, height: 46, borderRadius: 23, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },

@@ -54,15 +54,15 @@ export default function ProductsScreen() {
       name: '',
       category: 'General',
       purchasePrice: 0,
-      quantityPurchased: 1,
-      purchaseUnit: 'Units',
+      quantityPurchased: '',
+      purchaseUnit: '',
       datePurchased: new Date().toISOString(),
       fractionConsumed: 0,
       status: 'Active',
       sellingUnits: [
         {
           id: Date.now().toString(),
-          name: 'Piece',
+          name: '',
           yieldFromTotal: '',
           price: 0
         }

@@ -1,0 +1,329 @@
+MARKETOS — MOBILE APP INSTRUCTIONS
+==================================
+
+(Plain-text version of mobile/AGENTS.md, explained. This folder, "mobile/",
+is the Expo / React Native app. The web app lives in ../web and the backend
+in ../backend. Only change the mobile app unless told otherwise.)
+
+
+WHAT THIS PROJECT IS
+--------------------
+A React Native mobile app built with Expo (SDK 57, React Native 0.86).
+Prioritize mobile-first patterns, performance, and code that works on both
+Android and iOS.
+
+
+1) EXPO CHANGES OFTEN — DON'T TRUST MEMORY
+------------------------------------------
+Expo ships breaking changes every SDK release, so remembered APIs may be
+renamed, moved, or removed. Before writing any code that touches an Expo,
+EAS, or React Native API:
+  1. Read the "expo" version in package.json.
+  2. Read the matching docs: https://docs.expo.dev/versions/v<major>.0.0/
+  3. For anything else use the docs index https://docs.expo.dev/llms.txt
+     and follow its links instead of answering from memory.
+
+
+2) COMMANDS
+-----------
+Use "bunx" instead of "npx" only if the project uses Bun (bun.lock present).
+This project uses npm, so use npx.
+
+  npx expo install <package>   # ALWAYS use this to add deps (picks
+                               # SDK-compatible versions) — not npm add
+  npx expo start               # start the dev server
+  npx expo lint                # lint
+  npx tsc --noEmit             # typecheck
+  npx expo-doctor              # diagnose dependency/config issues
+  npx expo install --fix       # fix incompatible package versions
+
+Run lint and typecheck before declaring a task done.
+(Note: this project currently has no ESLint config / lint script and is
+plain JavaScript, not TypeScript, so tsc/lint are not set up yet.)
+
+
+3) BUILDING WITH EAS
+--------------------
+Build, sign, and submit in the cloud with EAS — no local Xcode/Android
+Studio needed:
+  eas build      # build
+  eas submit     # submit to the stores
+  eas update     # over-the-air JS updates
+Run as "npx eas-cli@latest <command>" (or "bunx eas-cli" in Bun projects).
+Docs: https://docs.expo.dev/eas/index.md
+This project's eas.json has: development, preview, production profiles.
+
+
+4) RULES
+--------
+- "ios/" and "android/" folders are auto-generated (Continuous Native
+  Generation). Do NOT hand-edit them; configure native behavior in app.json
+  plus config plugins instead.
+- Expo Go only includes its bundled native modules. After adding a library
+  with native code, the app needs a DEVELOPMENT BUILD:
+    npx expo run:android        (local build)
+    npx expo start --dev-client (run the dev build)
+  or: eas build --profile development
+  This is why Google Sign-In (@react-native-google-signin/google-signin)
+  crashes in Expo Go — that native module is not bundled there.
+- Prefer official Expo modules over third-party libraries.
+  Docs: https://docs.expo.dev/versions/latest/index.md
+
+
+IMPORTANT CAVEATS (the above is partly a generic template
+that does NOT fully match this project)
+------------------------------------------------------------------
+1. Navigation: AGENTS.md says "use Expo Router, routes in src/app/".
+   This project actually uses React Navigation (@react-navigation/*) with
+   screens in src/screens/. Do NOT follow the Expo Router instruction — it
+   would break the app. Routes/screens live in src/screens.
+2. TypeScript: AGENTS.md mentions "npx tsc --noEmit". This app is plain
+   JavaScript; there is no TypeScript and no tsconfig.
+
+
+GOOGLE SIGN-IN / DEV-BUILD NOTES (Android)
+------------------------------------------
+- Google Sign-In needs a development build (Expo Go can't run it).
+- The app's sign-in screen (src/screens/AuthScreen.js) loads the native
+  module optionally, so the app still boots in Expo Go.
+- Built with "npx expo run:android", the app is signed by the project-local
+  keystore: android/app/debug.keystore (alias androiddebugkey,
+  store/key password "android"). Both debug and release buildTypes use it.
+
+
+============================================================================
+HOW TO FIX "DEVELOPER_ERROR" (code 10) WHEN SIGNING IN WITH GOOGLE ON ANDROID
+============================================================================
+What it is: the sign-in sheet opens and lets you pick an account, then the
+app gets DEVELOPER_ERROR (status code 10). This is ALWAYS a configuration
+mismatch between the app and Google's server-side setup — never a code bug.
+The most common cause: the SHA-1 fingerprint you registered does NOT match
+the keystore that actually signed the INSTALLED app.
+
+The 3 things that must all line up (same Google project):
+  a) an ANDROID OAuth client for package "com.achivsoftwares.marketos" with
+     the correct SHA-1 of the signing keystore, AND
+  b) a WEB OAuth client whose ID is passed to GoogleSignin.configure()
+     (this is EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in mobile/.env), AND
+  c) the OAuth consent screen / Google provider enabled.
+
+--------------------------------------------------------------------------
+STEP 1 — Get the SHA-1 of the keystore that signed the INSTALLED app
+--------------------------------------------------------------------------
+For a "npx expo run:android" build, that keystore is the project-local file
+android/app/debug.keystore (NOT your EAS/release keystore, and NOT the global
+~/.android/debug.keystore). Run this from the mobile/ folder:
+
+  keytool -list -v -keystore android/app/debug.keystore ^
+    -alias androiddebugkey -storepass android -keypass android
+
+For the current build these values are (already verified):
+
+  Package name: com.achivsoftwares.marketos
+  SHA-1:   5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+  SHA-256: FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
+
+IMPORTANT: if you later build a RELEASE / Play Store / EAS build, it is
+signed with a different keystore. Run the same command on that keystore and
+register ITS SHA-1 too. (You can also get it from the Play Console under
+"App integrity" -> "App signing key certificate".)
+
+--------------------------------------------------------------------------
+STEP 2 — Register the fingerprint in the correct project (Firebase)
+--------------------------------------------------------------------------
+In the Firebase Console, open project "achivsoftwares":
+  1. Project settings (gear icon) -> "Your apps".
+  2. If there is NO Android app, click "Add app" -> Android, and set the
+     package name to EXACTLY:  com.achivsoftwares.marketos
+  3. Open that Android app -> "Add fingerprint" -> paste the SHA-1 above
+     -> Save. Then add the SHA-256 as well and Save.
+  (Adding it here automatically creates the matching Android OAuth client in
+   Google Cloud for the same project — which is what Google validates.)
+
+Alternative (Google Cloud Console, same project id 871940019940):
+  APIs & Services -> Credentials -> Create Credentials -> OAuth client ID
+  -> Android. Application type: Android. Package name:
+  com.achivsoftwares.marketos. Paste the SHA-1. Create.
+
+--------------------------------------------------------------------------
+STEP 3 — Enable the Google provider + consent screen
+--------------------------------------------------------------------------
+Firebase Console -> Authentication -> Sign-in method -> Google -> Enable
+(and make sure the OAuth consent screen is configured in the same project).
+
+--------------------------------------------------------------------------
+STEP 4 — Verify the WEB client ID
+--------------------------------------------------------------------------
+In mobile/.env:
+  EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=871940019940-cv8tsukairo9c741m54oir7bpt07u4u9.apps.googleusercontent.com
+In Google Cloud Console -> Credentials, this client must exist under the
+SAME project (871940019940 / achivsoftwares) and its type must be
+"Web application" (NOT Android). This value is what the app sends as
+webClientId. Leave EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID empty — do not set it.
+
+--------------------------------------------------------------------------
+STEP 5 — Retry
+--------------------------------------------------------------------------
+- No rebuild is needed after steps 2-3: it is server-side.
+- Wait about 1 minute, fully close the app, and try "Continue with Google"
+  again.
+
+--------------------------------------------------------------------------
+STEP 6 — If it STILL fails
+--------------------------------------------------------------------------
+- Double-check you added the fingerprint to the project/package that matches
+  the build you installed (a fingerprint in a different Google project or a
+  different package name does nothing).
+- Run the library's diagnostic (requires a paid licence):
+    npx @react-native-google-signin/config-doctor --package-name com.achivsoftwares.marketos
+- Checklist of the usual culprits:
+    * Registered the EAS/release keystore SHA-1 instead of android/app/debug.keystore.
+    * Registered the global ~/.android/debug.keystore instead of the project one.
+    * Added the SHA-1 to a different Firebase/Google project than the Web client.
+    * The webClientId in .env is an Android client (must be a Web client).
+    * Google provider not enabled / consent screen not configured.
+    * Changed .env after building and did not rebuild (EXPO_PUBLIC_* values
+      are baked in at build/bundle time).
+
+
+============================================================================
+RESOLVING DEVELOPER_ERROR (code 10) — CONCRETE STEPS FOR THIS PROJECT
+============================================================================
+Symptom: tapping "Continue with Google" opens the account picker, you choose
+an account, it returns to the login screen and shows:
+    DEVELOPER_ERROR (status code 10)
+This is ALWAYS a server-side config mismatch, not a code bug. The app is
+correctly configured (AuthScreen.js only passes webClientId). The problem is
+that Google has no Android OAuth client whose (package name + SHA-1) matches
+the app that is actually installed on the device.
+
+*** READ THIS FIRST — WHICH KEYSTORE SIGNED YOUR INSTALLED APP? ***
+The ONLY thing that matters is the keystore that signed the APK actually
+installed on the phone. The fingerprint must match THAT keystore, not some
+other one. For this project the installed APK was built with EAS
+("eas build"), so it is signed by the EAS-MANAGED keystore — NOT by any
+local debug keystore.
+
+  APK installed by EAS build  -> register the EAS keystore SHA-1  (see below)
+  APK installed by local
+  "npx expo run:android"      -> register android/app/debug.keystore SHA-1:
+       SHA-1   5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25
+       SHA-256 FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C
+
+  These fingerprints are NOT what signs an EAS build — do not use them:
+    * android/app/debug.keystore            (5E:8F:16:...)
+    * C:\Users\<you>\.android\debug.keystore (93:0C:77:... global keystore)
+
+  Package name (app.json android.package): com.achivsoftwares.marketos
+  Web client (this is the one passed to configure()): 871940019940-cv8t...
+
+WHY YOU STILL GET THE ERROR
+You installed an EAS-built APK, but the fingerprint registered in the Google
+Cloud Console was from a local debug keystore. EAS signs every build with its
+own keystore whose SHA-1 is different, so Google finds no Android OAuth client
+matching (package com.achivsoftwares.marketos + the EAS keystore's SHA-1).
+You must register the EAS keystore's fingerprint. The Android OAuth client
+you currently see (871940019940-mfic..., created 10 Oct 2026) has the wrong
+fingerprint inside it.
+
+----------------------------------------------------------------------------
+STEP 1 — Get the SHA-1 of the EAS keystore (the one that signed your APK)
+----------------------------------------------------------------------------
+Pick ANY of these:
+
+(a) EAS CLI (from the mobile/ folder — reads it from Expo's servers):
+      npx eas-cli@latest credentials --platform android
+    Choose the "achivsoftwares" project, then the Android app / build
+    profile, then "Keystore" -> it prints the keystore's SHA1 and SHA256
+    fingerprints (and offers "Download keystore"). Copy the SHA-1.
+
+(b) Expo website:
+    https://expo.dev -> your account -> project "marketos" ->
+    "Credentials" (or Configuration) -> Android -> Keystore ->
+    the SHA-1 / SHA-256 fingerprints are listed.
+
+(c) The specific build page:
+    https://expo.dev -> project -> Builds -> open your build ->
+    "Credentials" section shows the keystore fingerprint for that build.
+
+(d) From the downloaded keystore file (if you downloaded it):
+      keytool -list -v -keystore <file.jks> -alias <alias> \
+        -storepass <pass> | findstr SHA1
+
+Whichever you use, write down that SHA-1 (call it EAS_SHA1). That is the
+value Google must have. (It will NOT be 5E:8F:16:... unless you built with
+expo run:android, and it will not be 93:0C:77:... .)
+
+----------------------------------------------------------------------------
+STEP 2 — Register that fingerprint for the package (same Google project)
+----------------------------------------------------------------------------
+Recommended (Firebase — auto-creates/updates the Android OAuth client):
+  1. Firebase Console -> project "achivsoftwares" -> gear icon
+     "Project settings" -> "Your apps" -> Android app
+     (package com.achivsoftwares.marketos).
+  2. Under "SHA certificate fingerprints" -> remove the OLD wrong
+     fingerprint(s), then "Add fingerprint" and paste EAS_SHA1 (SHA-1), and
+     add the SHA-256 too if EAS reported one.
+  3. Save. This updates the matching Android OAuth client under Google
+     project 871940019940 (the one currently shown as "Android client 1").
+
+Alternative (Google Cloud Console):
+  APIs & Services -> Credentials -> click the Android client
+  (871940019940-mfic...) -> Edit -> replace the SHA-1 with EAS_SHA1 -> Save.
+  (Or delete it and Create Credentials -> OAuth client ID -> Android with
+   package com.achivsoftwares.marketos + EAS_SHA1.)
+
+----------------------------------------------------------------------------
+STEP 3 — Confirm the Web client + provider + consent screen
+----------------------------------------------------------------------------
+  * Credentials: a client of type "Web application" must exist in project
+    871940019940 with ID:
+      871940019940-cv8tsukairo9c741m54oir7bpt07u4u9.apps.googleusercontent.com
+    (this matches mobile/.env EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID — do not change).
+  * APIs & Services -> OAuth consent screen: configured, and the Google
+    provider is enabled under Firebase Console -> Authentication ->
+    Sign-in method -> Google.
+
+----------------------------------------------------------------------------
+STEP 4 — Make sure you are testing the RIGHT build
+----------------------------------------------------------------------------
+  * EAS signs all builds with the same project keystore, so EAS_SHA1 from
+    STEP 1 covers development/preview/production APKs built by EAS.
+  * If you ALSO later run a LOCAL build ("npx expo run:android"), that one is
+    signed by android/app/debug.keystore (SHA-1 5E:8F:16:...) — register that
+    fingerprint as an EXTRA entry too (multiple fingerprints are allowed).
+  * Confirm the installed app's package is com.achivsoftwares.marketos
+    (app.json matches, so it should be).
+  * Confirm the EAS build had the web client id baked in: EAS reads
+    mobile/.env at build time. If EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID was
+    missing then, the app would show a "Not Configured" alert instead of
+    DEVELOPER_ERROR, so this is fine here. If in doubt, rebuild on EAS after
+    confirming .env is committed/available.
+
+----------------------------------------------------------------------------
+STEP 5 — Retry cleanly
+----------------------------------------------------------------------------
+  * Steps 1-3 are server-side; no rebuild is required. Wait ~1 minute.
+  * EXPO_PUBLIC_* values are baked into the JS bundle, so restart Metro with
+    a clean cache if you changed .env:
+       npx expo start --dev-client -c
+  * Force-close the app on the device, reopen, and try "Continue with Google".
+  * No EAS rebuild is needed just to change the registered fingerprint (it is
+    server-side). You only rebuild if you changed .env.
+
+----------------------------------------------------------------------------
+STEP 6 — If it STILL fails
+----------------------------------------------------------------------------
+  * Re-check the Android OAuth client in Google Cloud (871940019940-mfic...):
+    its Package name MUST be com.achivsoftwares.marketos and its SHA-1 MUST
+    equal EAS_SHA1 (the EAS keystore fingerprint from STEP 1). If it still
+    shows 5E:8F:16:... or 93:0C:77:..., the wrong value is registered.
+  * Double-check EAS_SHA1 came from the SAME Expo project/keystore that built
+    the APK you installed (matching eas.json projectId
+    4b0c82de-f5f6-4ede-9e86-c7c90edbfd00).
+  * Make sure the fingerprint is in the SAME project as the Web client
+    (871940019940 / achivsoftwares), not in another Firebase project.
+  * Library diagnostic (requires a paid licence):
+      npx @react-native-google-signin/config-doctor --package-name com.achivsoftwares.marketos
+  * Re-read the library troubleshooting page:
+      https://react-native-google-signin.github.io/docs/troubleshooting

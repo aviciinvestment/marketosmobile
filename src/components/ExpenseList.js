@@ -14,7 +14,7 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
 
   const timeOf = (e) => (e.date ? new Date(e.date).getTime() : 0) || Number(e.updatedAt) || 0;
   const sorted = [...(expenses || [])].sort((a, b) => timeOf(b) - timeOf(a));
-  const rows = limit ? sorted.slice(0, limit) : sorted;
+  const rows = limit ? sorted.slice(0, limit) : sorted.slice(0, 20);
 
   const confirmDelete = (expense) => {
     Alert.alert(
@@ -42,10 +42,10 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
   const countBadge =
     sorted.length > 0 ? (
       <View
-        style={[styles.countBadge, { backgroundColor: theme.primary + '14', borderColor: theme.primary + '33' }]}
+        style={[styles.countBadge, { backgroundColor: theme.amber + '1A', borderColor: theme.amber + '33' }]}
       >
-        <Text style={{ fontSize: 11, fontWeight: '800', color: theme.primary }}>
-          {sorted.length} Total {sorted.length === 1 ? 'Expense' : 'Expenses'}
+        <Text style={{ fontSize: 12, fontWeight: '700', color: theme.amber }}>
+          {sorted.length} {sorted.length === 1 ? 'Expense' : 'Expenses'}
         </Text>
       </View>
     ) : null;
@@ -77,15 +77,43 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
           <Text style={{ fontSize: 17, fontWeight: '900', color: theme.foreground, flexShrink: 1 }} numberOfLines={1}>
             {title}
           </Text>
-          {countBadge}
-          {addButton ? <View style={{ marginLeft: 8 }}>{addButton}</View> : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {countBadge}
+            {addButton}
+          </View>
         </View>
-      ) : countBadge || addButton ? (
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>{countBadge}</View>
-          {addButton}
+      ) : (
+        <View style={{ marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <Text style={{ fontSize: 17, fontWeight: '900', color: theme.foreground, letterSpacing: -0.3 }}>
+              {t('expense.title')}
+            </Text>
+            <View
+              style={[
+                styles.expenseBadge,
+                { backgroundColor: theme.amber + '26', borderColor: theme.amber + '4D' },
+              ]}
+            >
+              <Text style={{ fontSize: 10, fontWeight: '700', color: theme.amber }}>{t('expense.badge')}</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: 12, color: theme.mutedForeground, marginTop: 3 }}>{t('expense.subtitle')}</Text>
+          {countBadge || addButton ? (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: 8,
+                marginTop: 12,
+              }}
+            >
+              {countBadge}
+              {addButton}
+            </View>
+          ) : null}
         </View>
-      ) : null}
+      )}
 
       {rows.length === 0 ? (
         <View style={[styles.empty, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -116,7 +144,7 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
               key={String(expense.id)}
               style={[styles.row, { backgroundColor: theme.surface, borderColor: theme.border }]}
             >
-              <View style={[styles.rowIcon, { backgroundColor: theme.amber + '14', borderColor: theme.amber + '33' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: theme.amber + '26', borderColor: theme.amber + '33' }]}>
                 <Ionicons name="trending-down" size={16} color={theme.amber} />
               </View>
 
@@ -139,12 +167,14 @@ export const ExpenseList = ({ onEditExpense, limit, title, onAddExpense }) => {
               <Text
                 style={{
                   fontSize: 13,
-                  fontWeight: '900',
-                  color: theme.red,
-                  backgroundColor: theme.red + '14',
+                  fontWeight: '800',
+                  color: theme.amber,
+                  backgroundColor: theme.amber + '1A',
                   borderRadius: 8,
-                  paddingHorizontal: 8,
+                  paddingHorizontal: 10,
                   paddingVertical: 4,
+                  borderWidth: 1,
+                  borderColor: theme.amber + '33',
                   overflow: 'hidden',
                   marginLeft: 6,
                 }}
@@ -193,9 +223,14 @@ const styles = StyleSheet.create({
   countBadge: {
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 9,
+    paddingHorizontal: 10,
     paddingVertical: 4,
-    marginLeft: 8,
+  },
+  expenseBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
   },
   addBtn: {
     flexDirection: 'row',

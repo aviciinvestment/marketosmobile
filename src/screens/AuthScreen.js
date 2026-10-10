@@ -20,19 +20,20 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithCredential,
+  sendEmailVerification,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 import { Svg, Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { auth } from '../../firebase';
-import {
-  GoogleSignin,
-  statusCodes,
-  isSuccessResponse,
-  isErrorWithCode,
-} from '@react-native-google-signin/google-signin';
 import { Ionicons } from '@expo/vector-icons';
-import { sendTelemetry } from '../config/api';
+import { sendTelemetry, getApiEndpoints, ADMIN_EMAIL } from '../config/api';
 import { useAppT } from '../i18n';
+import {
+  validateSignup,
+  validateSignin,
+  validateForgotPassword,
+} from '../utils/validation';
 import { gold } from '../utils/theme';
 import BrandLogo from '../components/BrandLogo';
 import LegalModal from '../components/LegalModal';
@@ -43,7 +44,24 @@ const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 const googleConfigured = !!(WEB_CLIENT_ID || IOS_CLIENT_ID || ANDROID_CLIENT_ID);
 
-if (googleConfigured) {
+// The native Google Sign-In module is NOT available in Expo Go, so it is loaded
+// lazily/optionally. This keeps the app bootable in Expo Go (email auth still
+// works); the Google button shows a clear alert instead of crashing.
+let GoogleSignin = null;
+let statusCodes = {};
+let isSuccessResponse = () => false;
+let isErrorWithCode = () => false;
+try {
+  const googleSigninModule = require('@react-native-google-signin/google-signin');
+  GoogleSignin = googleSigninModule.GoogleSignin;
+  statusCodes = googleSigninModule.statusCodes || {};
+  isSuccessResponse = googleSigninModule.isSuccessResponse || (() => false);
+  isErrorWithCode = googleSigninModule.isErrorWithCode || (() => false);
+} catch (err) {
+  GoogleSignin = null;
+}
+
+if (googleConfigured && GoogleSignin) {
   try {
     GoogleSignin.configure({
       webClientId: WEB_CLIENT_ID || undefined,
@@ -94,6 +112,9 @@ export default function AuthScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [authNotice, setAuthNotice] = useState('');
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [forgotMode, setForgotMode] = useState(false);
   const [consentAgreed, setConsentAgreed] = useState(false);
   const [legalTab, setLegalTab] = useState(null);
   const [submitting, setSubmitting] = useState(false);
@@ -118,33 +139,163 @@ export default function AuthScreen({ navigation }) {
     });
   };
 
+  const friendlyAuthError = (err) => {
+    const code = String(err?.code || '');
+    switch (code) {
+      case 'auth/email-already-in-use':
+        return 'An account already exists with this email. Try signing in instead.';
+      case 'auth/invalid-email':
+        return 'Please enter a valid email address.';
+      case 'auth/weak-password':
+        return 'Your password is too weak. Use at least 8 characters with letters, numbers and a symbol.';
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Incorrect email or password.';
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Please wait a moment and try again.';
+      case 'auth/network-request-failed':
+        return 'Network error. Check your connection and try again.';
+      default:
+        return err?.message || 'Something went wrong. Please try again.';
+    }
+  };
+
+  // Ask the backend to re-validate the payload (server-side validation).
+  // Returns an error object if rejected, or null to continue. If the server is
+  // unreachable we fall back to the client validation that already ran.
+  const validateOnServer = async (url, payload) => {
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) return null;
+      // Only treat real validation rejections as blocking. A 404 (endpoint not
+      // deployed) or 5xx (server trouble) must NOT block the user — the client
+      // validation already ran, so let the flow continue.
+      if (res.status === 400 || res.status === 422) {
+        const data = await res.json().catch(() => ({}));
+        return {
+          message: data?.message || data?.error || 'Validation failed. Please check your details.',
+          errors: data?.errors,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
   const handleAuth = async () => {
     if (submitting) return;
     setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+
+    // 1) Client-side validation
+    const result = isSignUp
+      ? validateSignup({ fullName: username, email, password, confirmPassword })
+      : validateSignin({ email, password });
+
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      setAuthError(result.message);
+      return;
+    }
+
     if (isSignUp && !consentAgreed) {
       setAuthError(CONSENT_ERROR);
       return;
     }
-    if (isSignUp && password !== confirmPassword) {
-      setAuthError('Passwords do not match');
-      return;
-    }
+
     setSubmitting(true);
     try {
+      // 2) Server-side validation (source of truth)
+      const endpoints = await getApiEndpoints();
+      const serverError = await validateOnServer(
+        isSignUp ? endpoints.authValidateSignup : endpoints.authValidateSignin,
+        isSignUp
+          ? { fullName: username.trim(), email: email.trim(), password, confirmPassword }
+          : { email: email.trim(), password }
+      );
+      if (serverError) {
+        if (serverError.errors) setFieldErrors(serverError.errors);
+        setAuthError(serverError.message);
+        return;
+      }
+
+      // 3) Firebase authentication
       if (isSignUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password);
-        await updateProfile(cred.user, { displayName: username });
+        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        await updateProfile(cred.user, { displayName: username.trim() });
+        // Email confirmation: the account cannot be used until the user opens
+        // the confirmation link we send to their inbox.
+        await sendEmailVerification(cred.user);
+        setAuthNotice(
+          `We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`
+        );
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        setUsername('');
+        switchMode(false);
       } else {
-        await signInWithEmailAndPassword(auth, email, password);
+        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        const isFounderAccount =
+          (cred.user.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+        if (!cred.user.emailVerified && !isFounderAccount) {
+          await sendEmailVerification(cred.user).catch(() => {});
+          setAuthError(
+            'Your email is not confirmed yet. We just sent you a fresh confirmation link — please confirm your email, then sign in again.'
+          );
+          return;
+        }
       }
     } catch (err) {
-      setAuthError(err.message);
+      setAuthError(friendlyAuthError(err));
       sendTelemetry({
         userId: email || 'anonymous',
         status: 401,
         path: isSignUp ? '/auth/signup' : '/auth/login',
-        detail: 'Auth failure: ' + err.message,
+        detail: 'Auth failure: ' + (err?.message || String(err)),
       });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (submitting) return;
+    setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+
+    const result = validateForgotPassword({ email });
+    if (!result.valid) {
+      setFieldErrors(result.errors);
+      setAuthError(result.message);
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const endpoints = await getApiEndpoints();
+      const serverError = await validateOnServer(endpoints.authForgotPassword, {
+        email: email.trim(),
+      });
+      if (serverError) {
+        if (serverError.errors) setFieldErrors(serverError.errors);
+        setAuthError(serverError.message);
+        return;
+      }
+      await sendPasswordResetEmail(auth, email.trim());
+      setAuthNotice(
+        `If an account exists for ${email.trim()}, a password reset link is on its way. Please check your inbox (and spam) and follow the link to set a new password.`
+      );
+    } catch (err) {
+      setAuthError(friendlyAuthError(err));
     } finally {
       setSubmitting(false);
     }
@@ -152,6 +303,16 @@ export default function AuthScreen({ navigation }) {
 
   const handleGoogleAuth = async () => {
     setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+    setForgotMode(false);
+    if (!GoogleSignin) {
+      Alert.alert(
+        'Google Sign-In Unavailable',
+        'Google Sign-In needs a development build (it is not available in Expo Go). Run "npx expo run:android" to build one.'
+      );
+      return;
+    }
     if (!googleConfigured) {
       Alert.alert(
         'Google Sign-In Not Configured',
@@ -182,6 +343,9 @@ export default function AuthScreen({ navigation }) {
   const switchMode = (signUp) => {
     setIsSignUp(signUp);
     setAuthError('');
+    setAuthNotice('');
+    setFieldErrors({});
+    setForgotMode(false);
     Animated.timing(toggleX, {
       toValue: signUp ? TOGGLE_PILL_W : 0,
       duration: 300,
@@ -193,13 +357,19 @@ export default function AuthScreen({ navigation }) {
   const renderField = (label, value, onChangeText, options = {}) => {
     const field = label.toLowerCase().replace(/\s+/g, '');
     const focused = focusedField === field;
+    const error = options.errorKey ? fieldErrors[options.errorKey] : null;
     return (
       <View style={styles.field}>
         <Text style={styles.label}>{label}</Text>
         <TextInput
-          style={[styles.input, focused && styles.inputFocused]}
+          style={[styles.input, focused && styles.inputFocused, error && styles.inputError]}
           value={value}
-          onChangeText={onChangeText}
+          onChangeText={(text) => {
+            if (options.errorKey && fieldErrors[options.errorKey]) {
+              setFieldErrors((prev) => ({ ...prev, [options.errorKey]: '' }));
+            }
+            onChangeText(text);
+          }}
           placeholder={options.placeholder}
           placeholderTextColor="rgba(255,255,255,0.28)"
           autoCapitalize={options.autoCapitalize || 'none'}
@@ -209,6 +379,7 @@ export default function AuthScreen({ navigation }) {
           onBlur={() => setFocusedField(null)}
           {...options.props}
         />
+        {error ? <Text style={styles.fieldError}>{error}</Text> : null}
       </View>
     );
   };
@@ -256,28 +427,97 @@ export default function AuthScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            {forgotMode ? (
+              <View style={styles.form}>
+                <Text style={styles.forgotHint}>
+                  Enter the email address linked to your account and we'll send you a secure link to
+                  reset your password.
+                </Text>
+
+                {renderField(t('auth.email'), email, setEmail, {
+                  placeholder: 'name@example.com',
+                  errorKey: 'email',
+                  props: { keyboardType: 'email-address', autoCapitalize: 'none' },
+                })}
+
+                {authNotice ? (
+                  <View style={styles.noticeBox}>
+                    <Text style={styles.noticeText}>{authNotice}</Text>
+                  </View>
+                ) : null}
+
+                {authError ? (
+                  <View style={styles.errorBox}>
+                    <Text style={styles.errorText}>{authError}</Text>
+                  </View>
+                ) : null}
+
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={handleForgotPassword}
+                  disabled={submitting}
+                  style={[styles.primaryBtn, submitting && styles.btnDisabled]}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#000000" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>{t('auth.sendResetLink')}</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setForgotMode(false);
+                    setAuthError('');
+                    setAuthNotice('');
+                    setFieldErrors({});
+                  }}
+                >
+                  <Text style={styles.backLink}>{t('auth.backToSignIn')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
             <View style={styles.form}>
               {isSignUp &&
-                renderField(t('auth.username'), username, setUsername, {
-                  placeholder: 'Your Name or Business',
+                renderField(t('auth.fullName'), username, setUsername, {
+                  placeholder: 'e.g. Ada Okafor',
                   autoCapitalize: 'words',
+                  errorKey: 'fullName',
                 })}
 
               {renderField(t('auth.email'), email, setEmail, {
                 placeholder: 'name@example.com',
+                errorKey: 'email',
                 props: { keyboardType: 'email-address', autoCapitalize: 'none' },
               })}
 
               {renderField(t('auth.password'), password, setPassword, {
                 placeholder: '••••••••',
+                errorKey: 'password',
                 props: { secureTextEntry: true },
               })}
 
               {isSignUp &&
                 renderField(t('auth.confirmPassword'), confirmPassword, setConfirmPassword, {
                   placeholder: '••••••••',
+                  errorKey: 'confirmPassword',
                   props: { secureTextEntry: true },
                 })}
+
+              {!isSignUp && (
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setForgotMode(true);
+                    setAuthError('');
+                    setAuthNotice('');
+                    setFieldErrors({});
+                  }}
+                >
+                  <Text style={styles.forgotLink}>{t('auth.forgotPassword')}</Text>
+                </TouchableOpacity>
+              )}
 
               {isSignUp && (
                 <TouchableOpacity
@@ -301,6 +541,12 @@ export default function AuthScreen({ navigation }) {
                   </Text>
                 </TouchableOpacity>
               )}
+
+              {authNotice ? (
+                <View style={styles.noticeBox}>
+                  <Text style={styles.noticeText}>{authNotice}</Text>
+                </View>
+              ) : null}
 
               {authError ? (
                 <View style={styles.errorBox}>
@@ -337,6 +583,7 @@ export default function AuthScreen({ navigation }) {
                 <Text style={styles.googleBtnText}>Continue with Google</Text>
               </TouchableOpacity>
             </View>
+            )}
 
             <View style={styles.footer}>
               <TouchableOpacity onPress={() => setLegalTab('terms')}>
@@ -501,6 +748,33 @@ const styles = StyleSheet.create({
   inputFocused: {
     borderColor: gold,
   },
+  inputError: {
+    borderColor: 'rgba(239,68,68,0.6)',
+  },
+  fieldError: {
+    color: '#f87171',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 1,
+  },
+  forgotHint: {
+    color: '#8a8a93',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  forgotLink: {
+    color: gold,
+    fontSize: 12,
+    fontWeight: '800',
+    alignSelf: 'flex-end',
+  },
+  backLink: {
+    color: '#8a8a93',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 4,
+  },
   consentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -548,6 +822,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  noticeBox: {
+    backgroundColor: 'rgba(52,211,153,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(52,211,153,0.35)',
+    borderRadius: 12,
+    padding: 12,
+  },
+  noticeText: {
+    color: '#34D399',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+    lineHeight: 18,
   },
   primaryBtn: {
     backgroundColor: gold,
