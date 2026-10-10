@@ -502,31 +502,43 @@ export default function AdminScreen({ navigation }) {
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabBar}>
-        {TABS.map((t) => {
-          const selected = activeTab === t.key;
-          return (
-            <TouchableOpacity
-              key={t.key}
-              activeOpacity={0.85}
-              onPress={() => setActiveTab(t.key)}
-              style={[
-                styles.tabChip,
-                {
-                  backgroundColor: selected ? theme.primary : theme.surface,
-                  borderColor: selected ? theme.primary : theme.border,
-                },
-              ]}
-            >
-              <Text style={{ fontSize: 12, fontWeight: '900', color: selected ? '#000' : theme.mutedForeground }}>
-                {t.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.tabBarWrap}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBarScroll}
+          contentContainerStyle={styles.tabBar}
+        >
+          {TABS.map((t) => {
+            const selected = activeTab === t.key;
+            return (
+              <TouchableOpacity
+                key={t.key}
+                activeOpacity={0.85}
+                onPress={() => setActiveTab(t.key)}
+                style={[
+                  styles.tabChip,
+                  {
+                    backgroundColor: selected ? theme.primary : theme.surface,
+                    borderColor: selected ? theme.primary : theme.border,
+                  },
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                  style={{ fontSize: 12, fontWeight: '900', color: selected ? '#000' : theme.mutedForeground }}
+                >
+                  {t.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
 
       <ScrollView
+        style={styles.flex}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
@@ -1456,8 +1468,16 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   refreshBtn: { width: 32, height: 32, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { paddingHorizontal: 16, paddingBottom: 12, gap: 8 },
-  tabChip: { paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, borderWidth: 1 },
+  tabBarWrap: { flexGrow: 0, flexShrink: 0 },
+  tabBarScroll: { flexGrow: 0, flexShrink: 0 },
+  tabBar: { paddingHorizontal: 16, paddingBottom: 12, gap: 8, alignItems: 'center' },
+  tabChip: {
+    flexShrink: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
   scrollContent: { paddingHorizontal: 16, paddingBottom: 36 },
   card: { borderRadius: 20, borderWidth: 1, padding: 16, marginBottom: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 },

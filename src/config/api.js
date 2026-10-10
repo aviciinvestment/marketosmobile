@@ -30,6 +30,7 @@ export const getApiEndpoints = async () => {
     adminTelemetry: `${baseUrl}/api/admin/telemetry`,
     supportComplaint: `${baseUrl}/api/support/complaint`,
     uploadAvatar: `${baseUrl}/api/profile/upload-avatar`,
+    getAvatar: (userId) => `${baseUrl}/api/profile/avatar?userId=${encodeURIComponent(userId || '')}`,
     authValidateSignup: `${baseUrl}/api/auth/validate-signup`,
     authValidateSignin: `${baseUrl}/api/auth/validate-signin`,
     authForgotPassword: `${baseUrl}/api/auth/forgot-password`,

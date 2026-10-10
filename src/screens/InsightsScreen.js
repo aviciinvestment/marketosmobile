@@ -17,6 +17,20 @@ import { useAppT, useAppTF } from '../i18n';
 
 const PERIODS = ['today', 'week', 'month', 'year', 'custom', 'all'];
 
+// Must match `expo.scheme` in app.json. Paystack redirects here (via the backend
+// callback page) so the auth session closes and drops the user back in the app.
+const PAYWALL_REDIRECT_URL = 'marketos://paywall';
+
+const referenceFromUrl = (url) => {
+  if (!url) return '';
+  try {
+    const match = String(url).match(/[?&](reference|trxref)=([^&]+)/i);
+    return match ? decodeURIComponent(match[2]) : '';
+  } catch {
+    return '';
+  }
+};
+
 const isValidDate = (value) =>
   /^\d{4}-\d{2}-\d{2}$/.test(value) && !isNaN(new Date(`${value}T00:00:00`).getTime());
 
@@ -81,10 +95,19 @@ export default function InsightsScreen() {
         throw new Error(initData?.error || 'Could not start payment. Please try again.');
       }
 
-      await WebBrowser.openBrowserAsync(initData.authorizationUrl);
+      // openAuthSessionAsync watches for the `marketos://paywall` deep link and
+      // closes the browser automatically the moment Paystack redirects back, so
+      // the merchant never has to manually find their way to the app again.
+      const result = await WebBrowser.openAuthSessionAsync(
+        initData.authorizationUrl,
+        PAYWALL_REDIRECT_URL
+      );
+      const reference =
+        (result?.type === 'success' && referenceFromUrl(result.url)) || initData.reference;
 
-      // When the user returns, verify the transaction server-side.
-      const verifyRes = await fetch(endpoints.paywallVerify(initData.reference));
+      // Whether they came back automatically or closed it themselves, verify
+      // server-side so a completed payment always unlocks Insights.
+      const verifyRes = await fetch(endpoints.paywallVerify(reference));
       const verifyData = await verifyRes.json();
       if (verifyData?.success) {
         await fetchPaywallStatus();
