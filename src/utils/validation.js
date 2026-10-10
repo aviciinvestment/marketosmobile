@@ -8,6 +8,7 @@
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const NAME_RE = /^[A-Za-z\u00C0-\u024F]+(?:[ .'\u2019-][A-Za-z\u00C0-\u024F]+)*$/;
+const MOBILE_RE = /^\+?\d{10,15}$/;
 
 const normalize = (value) => (typeof value === 'string' ? value.trim() : '');
 
@@ -30,6 +31,16 @@ export const validateEmail = (email) => {
   if (value.length > 254) return 'That email address is too long.';
   if (!EMAIL_RE.test(value)) {
     return 'Please enter a valid email address (e.g. name@example.com).';
+  }
+  return null;
+};
+
+export const validateMobile = (mobile) => {
+  const raw = normalize(mobile);
+  if (!raw) return 'Please enter your mobile number.';
+  const cleaned = raw.replace(/[\s()-]/g, '');
+  if (!MOBILE_RE.test(cleaned)) {
+    return 'Please enter a valid mobile number (10-15 digits, e.g. 08012345678 or +2348012345678).';
   }
   return null;
 };
@@ -57,7 +68,7 @@ const buildResult = (errors) => {
 };
 
 export const validateSignup = (payload = {}) => {
-  const { fullName, username, email, password, confirmPassword } = payload;
+  const { fullName, username, email, mobile, password, confirmPassword } = payload;
   const nameValue = fullName != null ? fullName : username;
 
   const errors = {};
@@ -66,6 +77,9 @@ export const validateSignup = (payload = {}) => {
 
   const emailError = validateEmail(email);
   if (emailError) errors.email = emailError;
+
+  const mobileError = validateMobile(mobile);
+  if (mobileError) errors.mobile = mobileError;
 
   const passwordError = validatePassword(password);
   if (passwordError) errors.password = passwordError;

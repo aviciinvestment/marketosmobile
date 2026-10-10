@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -22,6 +22,7 @@ import {
   signInWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
+  signOut,
 } from 'firebase/auth';
 import { Svg, Path } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -34,7 +35,8 @@ import {
   validateSignin,
   validateForgotPassword,
 } from '../utils/validation';
-import { gold } from '../utils/theme';
+import { gold, getTheme } from '../utils/theme';
+import { useSyncContext } from '../hooks/SyncContext';
 import BrandLogo from '../components/BrandLogo';
 import LegalModal from '../components/LegalModal';
 import SupportWidget from '../components/SupportWidget';
@@ -85,7 +87,7 @@ function GoogleIcon() {
   return (
     <Svg width={16} height={16} viewBox="0 0 24 24">
       <Path
-        fill="#F4F4F5"
+        fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
       />
       <Path
@@ -106,9 +108,13 @@ function GoogleIcon() {
 
 export default function AuthScreen({ navigation }) {
   const t = useAppT();
+  const { isDarkMode, setIsDarkMode } = useSyncContext();
+  const theme = getTheme(isDarkMode);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [mobileNumber, setMobileNumber] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [authError, setAuthError] = useState('');
@@ -196,7 +202,7 @@ export default function AuthScreen({ navigation }) {
 
     // 1) Client-side validation
     const result = isSignUp
-      ? validateSignup({ fullName: username, email, password, confirmPassword })
+      ? validateSignup({ fullName: username, email, mobile: mobileNumber, password, confirmPassword })
       : validateSignin({ email, password });
 
     if (!result.valid) {
@@ -217,7 +223,7 @@ export default function AuthScreen({ navigation }) {
       const serverError = await validateOnServer(
         isSignUp ? endpoints.authValidateSignup : endpoints.authValidateSignin,
         isSignUp
-          ? { fullName: username.trim(), email: email.trim(), password, confirmPassword }
+          ? { fullName: username.trim(), email: email.trim(), mobile: mobileNumber.trim(), password, confirmPassword }
           : { email: email.trim(), password }
       );
       if (serverError) {
@@ -230,9 +236,22 @@ export default function AuthScreen({ navigation }) {
       if (isSignUp) {
         const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
         await updateProfile(cred.user, { displayName: username.trim() });
+        // Persist the signup details (incl. mobile number) to the user profile
+        // so they survive across devices and future sign-ins.
+        fetch(endpoints.profileUpdate, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: cred.user.uid,
+            name: username.trim(),
+            email: email.trim(),
+            mobile: mobileNumber.trim(),
+          }),
+        }).catch(() => {});
         // Email confirmation: the account cannot be used until the user opens
         // the confirmation link we send to their inbox.
         await sendEmailVerification(cred.user);
+        await signOut(auth);
         setAuthNotice(
           `We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`
         );
@@ -240,6 +259,7 @@ export default function AuthScreen({ navigation }) {
         setPassword('');
         setConfirmPassword('');
         setUsername('');
+        setMobileNumber('');
         switchMode(false);
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -247,6 +267,7 @@ export default function AuthScreen({ navigation }) {
           (cred.user.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
         if (!cred.user.emailVerified && !isFounderAccount) {
           await sendEmailVerification(cred.user).catch(() => {});
+          await signOut(auth);
           setAuthError(
             'Your email is not confirmed yet. We just sent you a fresh confirmation link — please confirm your email, then sign in again.'
           );
@@ -371,7 +392,7 @@ export default function AuthScreen({ navigation }) {
             onChangeText(text);
           }}
           placeholder={options.placeholder}
-          placeholderTextColor="rgba(255,255,255,0.28)"
+          placeholderTextColor={theme.mutedForeground}
           autoCapitalize={options.autoCapitalize || 'none'}
           underlineColorAndroid="transparent"
           selectionColor={gold}
@@ -386,9 +407,20 @@ export default function AuthScreen({ navigation }) {
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
       {/* Ambient gold glow, like the web hero backdrop */}
       <View style={styles.glow} />
+
+      {/* Light / dark toggle so the theme can be chosen before signing in */}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={() => setIsDarkMode(!isDarkMode)}
+        style={[styles.themeToggle, { backgroundColor: theme.surface, borderColor: theme.border }]}
+        accessibilityRole="button"
+        accessibilityLabel={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        <Ionicons name={isDarkMode ? 'sunny' : 'moon'} size={18} color={theme.primary} />
+      </TouchableOpacity>
 
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
@@ -407,7 +439,7 @@ export default function AuthScreen({ navigation }) {
               onPress={() => navigation.navigate('Landing')}
               style={styles.tourBtn}
             >
-              <Ionicons name="compass-outline" size={14} color="#fbbf24" />
+              <Ionicons name="compass-outline" size={14} color={theme.goldDark} />
               <Text style={styles.tourBtnText}>{t('auth.newHint')}</Text>
             </TouchableOpacity>
 
@@ -491,6 +523,13 @@ export default function AuthScreen({ navigation }) {
                 errorKey: 'email',
                 props: { keyboardType: 'email-address', autoCapitalize: 'none' },
               })}
+
+              {isSignUp &&
+                renderField(t('auth.mobile'), mobileNumber, setMobileNumber, {
+                  placeholder: 'e.g. 08012345678',
+                  errorKey: 'mobile',
+                  props: { keyboardType: 'phone-pad', autoCapitalize: 'none' },
+                })}
 
               {renderField(t('auth.password'), password, setPassword, {
                 placeholder: '••••••••',
@@ -621,10 +660,10 @@ export default function AuthScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (theme) => StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#09090b',
+    backgroundColor: theme.background,
   },
   glow: {
     position: 'absolute',
@@ -645,9 +684,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 440,
     alignSelf: 'center',
-    backgroundColor: '#121215',
+    backgroundColor: theme.card,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderColor: theme.border,
     borderRadius: 16,
     padding: 24,
     shadowColor: '#000',
@@ -671,21 +710,21 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   tourBtnText: {
-    color: '#fbbf24',
+    color: theme.goldDark,
     fontSize: 11.5,
     fontWeight: '700',
     flexShrink: 1,
     textAlign: 'center',
   },
   heading: {
-    color: '#f4f4f5',
+    color: theme.foreground,
     fontSize: 26,
     fontWeight: '900',
     textAlign: 'center',
     letterSpacing: -0.6,
   },
   subheading: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',
@@ -694,7 +733,7 @@ const styles = StyleSheet.create({
   },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: '#1a1a20',
+    backgroundColor: theme.surface,
     borderRadius: 999,
     padding: TOGGLE_PAD,
     width: TOGGLE_WIDTH,
@@ -720,7 +759,7 @@ const styles = StyleSheet.create({
   toggleText: {
     fontWeight: '800',
     fontSize: 13,
-    color: '#8a8a93',
+    color: theme.mutedForeground,
   },
   toggleTextActive: {
     color: '#000000',
@@ -728,20 +767,20 @@ const styles = StyleSheet.create({
   form: { gap: 14 },
   field: { gap: 7 },
   label: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1,
     textTransform: 'uppercase',
   },
   input: {
-    backgroundColor: '#1a1a20',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    borderColor: theme.border,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
-    color: '#f4f4f5',
+    color: theme.foreground,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -749,16 +788,16 @@ const styles = StyleSheet.create({
     borderColor: gold,
   },
   inputError: {
-    borderColor: 'rgba(239,68,68,0.6)',
+    borderColor: theme.red,
   },
   fieldError: {
-    color: '#f87171',
+    color: theme.red,
     fontSize: 11,
     fontWeight: '600',
     marginTop: 1,
   },
   forgotHint: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 12,
     lineHeight: 18,
   },
@@ -769,7 +808,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   backLink: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
@@ -778,9 +817,9 @@ const styles = StyleSheet.create({
   consentRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
+    borderColor: theme.border,
     borderRadius: 12,
     padding: 12,
     marginTop: 2,
@@ -790,7 +829,7 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: theme.mutedForeground,
     marginRight: 10,
     marginTop: 1,
     alignItems: 'center',
@@ -802,7 +841,7 @@ const styles = StyleSheet.create({
   },
   consentText: {
     flex: 1,
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 12,
     lineHeight: 18,
   },
@@ -811,27 +850,27 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   errorBox: {
-    backgroundColor: 'rgba(239,68,68,0.1)',
+    backgroundColor: `${theme.red}1A`,
     borderWidth: 1,
-    borderColor: 'rgba(239,68,68,0.3)',
+    borderColor: `${theme.red}4D`,
     borderRadius: 12,
     padding: 12,
   },
   errorText: {
-    color: '#f87171',
+    color: theme.red,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },
   noticeBox: {
-    backgroundColor: 'rgba(52,211,153,0.1)',
+    backgroundColor: `${theme.emerald}1A`,
     borderWidth: 1,
-    borderColor: 'rgba(52,211,153,0.35)',
+    borderColor: `${theme.emerald}4D`,
     borderRadius: 12,
     padding: 12,
   },
   noticeText: {
-    color: '#34D399',
+    color: theme.emerald,
     fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
@@ -862,19 +901,19 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: theme.border,
   },
   dividerText: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     marginHorizontal: 14,
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
   googleBtn: {
-    backgroundColor: '#1a1a20',
+    backgroundColor: theme.surface,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: theme.border,
     width: '100%',
     paddingVertical: 13,
     borderRadius: 999,
@@ -884,7 +923,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   googleBtnText: {
-    color: '#f4f4f5',
+    color: theme.foreground,
     fontWeight: '700',
     fontSize: 13,
   },
@@ -897,19 +936,19 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     marginTop: 20,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
+    borderTopColor: theme.border,
   },
   footerLink: {
-    color: '#8a8a93',
+    color: theme.mutedForeground,
     fontSize: 11,
     fontWeight: '700',
   },
   footerDot: {
-    color: '#6b7280',
+    color: theme.mutedForeground,
     fontSize: 11,
   },
   footerBadge: {
-    color: '#34D399',
+    color: theme.emerald,
     fontSize: 11,
     fontWeight: '700',
   },
@@ -928,5 +967,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 8,
+  },
+  themeToggle: {
+    position: 'absolute',
+    top: 52,
+    right: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
   },
 });
