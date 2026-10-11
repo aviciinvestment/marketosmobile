@@ -13,6 +13,7 @@ import {
   StatusBar,
   Animated,
   Easing,
+  Modal,
 } from 'react-native';
 import {
   signInWithEmailAndPassword,
@@ -126,6 +127,7 @@ export default function AuthScreen({ navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [sentVerificationEmail, setSentVerificationEmail] = useState('');
   const toggleX = useRef(new Animated.Value(0)).current;
 
   // If legal was accepted on the landing screen, pre-check consent like the web.
@@ -258,11 +260,8 @@ export default function AuthScreen({ navigation }) {
         setUsername('');
         setMobileNumber('');
         switchMode(false);
-        // Set the notice AFTER switchMode: it resets authNotice to '', so this
-        // must come last or the confirmation message is wiped out.
-        setAuthNotice(
-          `We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`
-        );
+        // Surface the confirmation in a modal so the message can't be missed.
+        setSentVerificationEmail(email.trim());
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
         const isFounderAccount =
@@ -658,6 +657,34 @@ export default function AuthScreen({ navigation }) {
           setLegalTab(null);
         }}
       />
+
+      <Modal
+        visible={!!sentVerificationEmail}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSentVerificationEmail('')}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.modalIcon}>
+              <Ionicons name="mail-unread" size={28} color={gold} />
+            </View>
+            <Text style={styles.modalTitle}>Confirmation link sent</Text>
+            <Text style={styles.modalBody}>
+              We&apos;ve sent a confirmation link to{' '}
+              <Text style={styles.modalEmail}>{sentVerificationEmail}</Text>. Please open it to
+              confirm your email, then sign in.
+            </Text>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={() => setSentVerificationEmail('')}
+              style={styles.modalBtn}
+            >
+              <Text style={styles.modalBtnText}>OK, I&apos;ll check my inbox</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -981,5 +1008,67 @@ const createStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 380,
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 16 },
+    shadowOpacity: 0.5,
+    shadowRadius: 30,
+    elevation: 16,
+  },
+  modalIcon: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(245,197,24,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(245,197,24,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  modalTitle: {
+    color: theme.foreground,
+    fontSize: 18,
+    fontWeight: '900',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  modalBody: {
+    color: theme.mutedForeground,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+  modalEmail: {
+    color: gold,
+    fontWeight: '800',
+  },
+  modalBtn: {
+    backgroundColor: gold,
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  modalBtnText: {
+    color: '#000000',
+    fontWeight: '900',
+    fontSize: 13.5,
   },
 });
