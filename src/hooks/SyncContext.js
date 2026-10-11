@@ -89,6 +89,12 @@ export const SyncProvider = ({ children }) => {
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      const isFounder = (currentUser?.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
+      if (currentUser && !currentUser.emailVerified && !isFounder) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
       setUser(currentUser);
       setAuthLoading(false);
     });

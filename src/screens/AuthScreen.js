@@ -236,7 +236,8 @@ export default function AuthScreen({ navigation }) {
 
       // 3) Firebase authentication
       if (isSignUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), password);
+        const signupEmail = email.trim();
+        const cred = await createUserWithEmailAndPassword(auth, signupEmail, password);
         await updateProfile(cred.user, { displayName: username.trim() });
         // Persist the signup details (incl. mobile number) to the user profile
         // so they survive across devices and future sign-ins.
@@ -246,7 +247,7 @@ export default function AuthScreen({ navigation }) {
           body: JSON.stringify({
             userId: cred.user.uid,
             name: username.trim(),
-            email: email.trim(),
+            email: signupEmail,
             mobile: mobileNumber.trim(),
           }),
         }).catch(() => {});
@@ -254,14 +255,8 @@ export default function AuthScreen({ navigation }) {
         // the confirmation link we send to their inbox.
         await sendEmailVerification(cred.user);
         await signOut(auth);
-        setEmail('');
-        setPassword('');
-        setConfirmPassword('');
-        setUsername('');
-        setMobileNumber('');
-        switchMode(false);
-        // Surface the confirmation in a modal so the message can't be missed.
-        setSentVerificationEmail(email.trim());
+        // Show verification modal informing the user before navigating to login
+        setSentVerificationEmail(signupEmail);
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
         const isFounderAccount =
@@ -374,6 +369,22 @@ export default function AuthScreen({ navigation }) {
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start();
+  };
+
+  const handleDismissVerificationModal = () => {
+    const verifiedEmail = sentVerificationEmail;
+    setSentVerificationEmail('');
+    switchMode(false);
+    setPassword('');
+    setConfirmPassword('');
+    setUsername('');
+    setMobileNumber('');
+    if (verifiedEmail) {
+      setEmail(verifiedEmail);
+      setAuthNotice(
+        `Verification email sent to ${verifiedEmail}. Please verify your email before signing in.`
+      );
+    }
   };
 
   const renderField = (label, value, onChangeText, options = {}) => {
@@ -662,25 +673,25 @@ export default function AuthScreen({ navigation }) {
         visible={!!sentVerificationEmail}
         transparent
         animationType="fade"
-        onRequestClose={() => setSentVerificationEmail('')}
+        onRequestClose={handleDismissVerificationModal}
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.modalIcon}>
               <Ionicons name="mail-unread" size={28} color={gold} />
             </View>
-            <Text style={styles.modalTitle}>Confirmation link sent</Text>
+            <Text style={styles.modalTitle}>Verification Email Sent</Text>
             <Text style={styles.modalBody}>
-              We&apos;ve sent a confirmation link to{' '}
-              <Text style={styles.modalEmail}>{sentVerificationEmail}</Text>. Please open it to
-              confirm your email, then sign in.
+              We&apos;ve sent a verification link to{' '}
+              <Text style={styles.modalEmail}>{sentVerificationEmail}</Text>.{'\n\n'}
+              Please check your inbox (and spam folder) to verify your account before logging in.
             </Text>
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => setSentVerificationEmail('')}
+              onPress={handleDismissVerificationModal}
               style={styles.modalBtn}
             >
-              <Text style={styles.modalBtnText}>OK, I&apos;ll check my inbox</Text>
+              <Text style={styles.modalBtnText}>Proceed to Login</Text>
             </TouchableOpacity>
           </View>
         </View>
