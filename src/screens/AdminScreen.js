@@ -145,6 +145,7 @@ export default function AdminScreen({ navigation }) {
   const [showPaidOnly, setShowPaidOnly] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearMessage, setClearMessage] = useState('');
+  const [deletingUserId, setDeletingUserId] = useState('');
   const aliveRef = useRef(true);
 
   // Paywall / Paystack configuration
@@ -305,8 +306,11 @@ export default function AdminScreen({ navigation }) {
       const name = String(u.name || '').toLowerCase();
       const email = String(u.email || '').toLowerCase();
       const uid = String(u.userId || u.id || u.uid || '').toLowerCase();
+      const mobile = String(u.mobile || '');
       const phone = String(u.phone || '');
-      return name.includes(q) || email.includes(q) || uid.includes(q) || phone.includes(q);
+      return (
+        name.includes(q) || email.includes(q) || uid.includes(q) || mobile.includes(q) || phone.includes(q)
+      );
     });
   }, [stats, searchUser]);
 
@@ -351,6 +355,35 @@ export default function AdminScreen({ navigation }) {
     } catch (e) {
       Alert.alert('Request Failed', 'Could not mark the complaint as resolved. Please try again.');
     }
+  };
+
+  const handleDeleteUser = async (userId, name) => {
+    if (!userId) return;
+    Alert.alert(
+      'Delete User',
+      `Delete ${name}? This permanently removes their account, store data, complaints and access. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingUserId(String(userId));
+            try {
+              const endpoints = await getApiEndpoints();
+              const res = await safeFetch(endpoints.adminDeleteUser(userId), { method: 'DELETE' });
+              if (!res || !res.ok) throw new Error('request failed');
+              loadAll();
+            } catch (e) {
+              Alert.alert('Delete Failed', 'Could not delete this user. Please try again.');
+            } finally {
+              if (aliveRef.current) setDeletingUserId('');
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    );
   };
 
   const doClearLogs = async () => {
@@ -767,6 +800,7 @@ export default function AdminScreen({ navigation }) {
                 const uid = String(u?.userId || u?.id || u?.uid || '');
                 const name = String(u?.name || 'Merchant');
                 const email = String(u?.email || '');
+                const mobile = String(u?.mobile || '');
                 const phone = String(u?.phone || '');
                 const products = Number(u?.productsCount) || 0;
                 const sales = Number(u?.salesCount) || 0;
@@ -804,20 +838,37 @@ export default function AdminScreen({ navigation }) {
                           </Text>
                         </View>
 
+                        {/* Profile mobile number */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                          <Ionicons
+                            name="call-outline"
+                            size={12}
+                            color={mobile ? theme.emerald : theme.mutedForeground}
+                          />
+                          {mobile ? (
+                            <Text style={{ fontSize: 11, color: theme.emerald, fontWeight: '700' }}>{mobile}</Text>
+                          ) : (
+                            <Text style={{ fontSize: 11, color: theme.mutedForeground }}>No profile mobile</Text>
+                          )}
+                          <View style={[styles.tinyBadge, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                            <Text style={{ fontSize: 8, fontWeight: '900', color: theme.mutedForeground, letterSpacing: 0.5 }}>
+                              PROFILE
+                            </Text>
+                          </View>
+                        </View>
+
+                        {/* Complaint phone number */}
                         {phone ? (
-                          <TouchableOpacity
-                            activeOpacity={0.7}
-                            onPress={() => callPhone(phone)}
-                            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}
-                          >
-                            <Ionicons name="call-outline" size={12} color={theme.emerald} />
-                            <Text style={{ fontSize: 11, color: theme.emerald, fontWeight: '700' }}>{phone}</Text>
-                          </TouchableOpacity>
-                        ) : (
-                          <Text style={{ fontSize: 11, color: theme.mutedForeground, marginTop: 6 }}>
-                            No phone filed
-                          </Text>
-                        )}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                            <Ionicons name="call-outline" size={12} color={theme.sky} />
+                            <Text style={{ fontSize: 11, color: theme.sky, fontWeight: '700' }}>{phone}</Text>
+                            <View style={[styles.tinyBadge, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                              <Text style={{ fontSize: 8, fontWeight: '900', color: theme.mutedForeground, letterSpacing: 0.5 }}>
+                                COMPLAINT
+                              </Text>
+                            </View>
+                          </View>
+                        ) : null}
 
                         <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 9 }}>
                           <View style={[styles.chip, { backgroundColor: theme.card, borderColor: theme.border }]}>
@@ -841,7 +892,7 @@ export default function AdminScreen({ navigation }) {
                       </View>
                     </View>
 
-                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
                       <TouchableOpacity
                         activeOpacity={0.8}
                         onPress={() => copyText(uid, 'User ID')}
@@ -849,16 +900,41 @@ export default function AdminScreen({ navigation }) {
                       >
                         <Ionicons name="copy-outline" size={16} color={theme.foreground} />
                       </TouchableOpacity>
+                      {mobile ? (
+                        <TouchableOpacity
+                          activeOpacity={0.8}
+                          onPress={() => callPhone(mobile)}
+                          style={[styles.callBtn, { backgroundColor: theme.primary }]}
+                        >
+                          <Ionicons name="call" size={14} color="#000" />
+                          <Text style={{ fontSize: 11, fontWeight: '900', color: '#000', marginLeft: 6 }}>Call Profile</Text>
+                        </TouchableOpacity>
+                      ) : null}
                       {phone ? (
                         <TouchableOpacity
                           activeOpacity={0.8}
                           onPress={() => callPhone(phone)}
-                          style={[styles.callBtn, { backgroundColor: theme.primary }]}
+                          style={[styles.callBtn, { backgroundColor: theme.sky }]}
                         >
                           <Ionicons name="call" size={14} color="#000" />
-                          <Text style={{ fontSize: 11, fontWeight: '900', color: '#000', marginLeft: 6 }}>Call</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '900', color: '#000', marginLeft: 6 }}>Call Complaint</Text>
                         </TouchableOpacity>
                       ) : null}
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        disabled={!!deletingUserId}
+                        onPress={() => handleDeleteUser(uid, name)}
+                        style={[
+                          styles.actionBtn,
+                          {
+                            backgroundColor: theme.surface,
+                            borderColor: deletingUserId === uid ? theme.red : theme.red + '55',
+                          },
+                        ]}
+                        accessibilityLabel={`Delete ${name}`}
+                      >
+                        <Ionicons name="trash-outline" size={16} color={theme.red} />
+                      </TouchableOpacity>
                     </View>
                   </View>
                 );

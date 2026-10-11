@@ -252,15 +252,17 @@ export default function AuthScreen({ navigation }) {
         // the confirmation link we send to their inbox.
         await sendEmailVerification(cred.user);
         await signOut(auth);
-        setAuthNotice(
-          `We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`
-        );
         setEmail('');
         setPassword('');
         setConfirmPassword('');
         setUsername('');
         setMobileNumber('');
         switchMode(false);
+        // Set the notice AFTER switchMode: it resets authNotice to '', so this
+        // must come last or the confirmation message is wiped out.
+        setAuthNotice(
+          `We've sent a confirmation link to ${email.trim()}. Please open it to confirm your email, then sign in.`
+        );
       } else {
         const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
         const isFounderAccount =

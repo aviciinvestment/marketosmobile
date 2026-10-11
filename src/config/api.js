@@ -27,6 +27,7 @@ export const getApiEndpoints = async () => {
     adminStats: `${baseUrl}/api/admin/stats`,
     adminLogs: `${baseUrl}/api/admin/logs`,
     adminComplaints: `${baseUrl}/api/admin/complaints`,
+    adminDeleteUser: (userId) => `${baseUrl}/api/admin/users/${encodeURIComponent(userId || '')}`,
     adminTelemetry: `${baseUrl}/api/admin/telemetry`,
     supportComplaint: `${baseUrl}/api/support/complaint`,
     uploadAvatar: `${baseUrl}/api/profile/upload-avatar`,
