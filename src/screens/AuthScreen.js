@@ -251,24 +251,10 @@ export default function AuthScreen({ navigation }) {
             mobile: mobileNumber.trim(),
           }),
         }).catch(() => {});
-        // Email confirmation: the account cannot be used until the user opens
-        // the confirmation link we send to their inbox.
-        await sendEmailVerification(cred.user);
-        await signOut(auth);
-        // Show verification modal informing the user before navigating to login
-        setSentVerificationEmail(signupEmail);
+        // Immediate sign up without email confirmation
+        // Firebase automatically logs in the new user
       } else {
-        const cred = await signInWithEmailAndPassword(auth, email.trim(), password);
-        const isFounderAccount =
-          (cred.user.email || '').toLowerCase() === ADMIN_EMAIL.toLowerCase();
-        if (!cred.user.emailVerified && !isFounderAccount) {
-          await sendEmailVerification(cred.user).catch(() => {});
-          await signOut(auth);
-          setAuthError(
-            'Your email is not confirmed yet. We just sent you a fresh confirmation link — please confirm your email, then sign in again.'
-          );
-          return;
-        }
+        await signInWithEmailAndPassword(auth, email.trim(), password);
       }
     } catch (err) {
       setAuthError(friendlyAuthError(err));
